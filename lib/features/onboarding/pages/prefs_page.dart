@@ -70,11 +70,11 @@ class PrefsPage extends StatelessWidget {
           const SizedBox(height: S.s),
           Text(
             'Настроим под тебя — изменить можно в любой момент.',
-            style: t.bodyMedium?.copyWith(color: C.textDim),
+            style: t.bodyMedium?.copyWith(color: context.cTextDim),
           ).animate().fadeIn(delay: 70.ms, duration: 400.ms),
 
           const SizedBox(height: S.l),
-          Text('Голос', style: t.titleSmall?.copyWith(color: C.textSec))
+          Text('Голос', style: t.titleSmall?.copyWith(color: context.cTextSec))
               .animate()
               .fadeIn(delay: 100.ms, duration: 350.ms),
           const SizedBox(height: S.s),
@@ -94,13 +94,13 @@ class PrefsPage extends StatelessWidget {
                       begin: const Offset(0.92, 0.92),
                       delay: (120 + 50 * i).ms,
                       duration: 320.ms,
-                      curve: Curves.easeOutBack,
+                      curve: Anim.curveGentle,
                     ),
             ],
           ),
 
           const SizedBox(height: S.l),
-          Text('Длительность', style: t.titleSmall?.copyWith(color: C.textSec))
+          Text('Длительность', style: t.titleSmall?.copyWith(color: context.cTextSec))
               .animate()
               .fadeIn(delay: 200.ms, duration: 350.ms),
           const SizedBox(height: S.s),
@@ -120,13 +120,13 @@ class PrefsPage extends StatelessWidget {
                       begin: const Offset(0.92, 0.92),
                       delay: (220 + 50 * i).ms,
                       duration: 320.ms,
-                      curve: Curves.easeOutBack,
+                      curve: Anim.curveGentle,
                     ),
             ],
           ),
 
           const SizedBox(height: S.l),
-          Text('Время', style: t.titleSmall?.copyWith(color: C.textSec))
+          Text('Время', style: t.titleSmall?.copyWith(color: context.cTextSec))
               .animate()
               .fadeIn(delay: 300.ms, duration: 350.ms),
           const SizedBox(height: S.s),
@@ -202,9 +202,9 @@ class _GradientChip extends StatelessWidget {
               borderRadius: BorderRadius.circular(R.xl - 1.5),
               color: selected
                   ? C.primary.withValues(alpha: 0.15)
-                  : C.surfaceLight,
+                  : context.cSurfaceLight,
               border: Border.all(
-                color: selected ? Colors.transparent : C.surfaceBorder,
+                color: selected ? Colors.transparent : context.cSurfaceBorder,
                 width: 0.5,
               ),
             ),
@@ -212,7 +212,7 @@ class _GradientChip extends StatelessWidget {
               child: Text(
                 label,
                 style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      color: selected ? C.text : C.textSec,
+                      color: selected ? context.cText : context.cTextSec,
                       fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                     ),
               ),

@@ -9,7 +9,7 @@ import 'package:meditator/features/home/meditation_playback_cache.dart';
 import 'package:meditator/shared/models/meditation.dart';
 import 'package:meditator/shared/utils/accessibility.dart';
 import 'package:meditator/shared/widgets/aura_avatar.dart';
-import 'package:meditator/shared/widgets/glass_card.dart';
+import 'package:meditator/shared/widgets/custom_icons.dart';
 
 class AuraCard extends StatefulWidget {
   const AuraCard({
@@ -37,7 +37,7 @@ class _AuraCardState extends State<AuraCard>
     super.initState();
     _pulseCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 2),
+      duration: const Duration(seconds: 3),
     )..repeat();
   }
 
@@ -64,40 +64,48 @@ class _AuraCardState extends State<AuraCard>
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     final m = widget.meditation;
+    final tod = C.timeOfDay();
 
     return Container(
+      width: double.infinity,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(R.l),
-        gradient: C.gradientPrimary,
-        boxShadow: [
-          BoxShadow(
-            color: C.primary.withValues(alpha: 0.25),
-            blurRadius: 24,
-            offset: const Offset(0, 12),
-          ),
-        ],
+        borderRadius: BorderRadius.circular(R.xl),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            tod.blob1.withValues(alpha: 0.12),
+            tod.blob2.withValues(alpha: 0.08),
+            tod.blob3.withValues(alpha: 0.05),
+          ],
+        ),
+        border: Border.all(
+          color: tod.blob1.withValues(alpha: 0.12),
+          width: 0.5,
+        ),
       ),
-      padding: const EdgeInsets.all(1.5),
-      child: GlassCard(
-        useBlur: true,
-        blur: 15,
-        semanticLabel: widget.loading || m == null
+      child: Semantics(
+        label: widget.loading || m == null
             ? 'Aura подбирает медитацию'
             : 'Рекомендация Aura: ${m.title}',
-        padding: const EdgeInsets.all(S.m),
-        child: widget.loading || m == null
-            ? _buildLoading(t)
-            : _buildContent(context, t, m),
+        child: Padding(
+          padding: const EdgeInsets.all(S.l),
+          child: widget.loading
+              ? _buildLoading(t)
+              : m == null
+                  ? _buildEmpty(t)
+                  : _buildContent(context, t, m),
+        ),
       ),
     )
         .animate()
-        .fadeIn(duration: 500.ms, curve: Curves.easeOut)
-        .slideY(begin: 0.06, duration: 500.ms, curve: Curves.easeOutCubic);
+        .fadeIn(duration: 500.ms, curve: Anim.curveMeditative)
+        .slideY(begin: 0.04, duration: 500.ms, curve: Anim.curve);
   }
 
   Widget _buildLoading(TextTheme t) {
     return SizedBox(
-      height: 168,
+      height: 140,
       child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -107,10 +115,25 @@ class _AuraCardState extends State<AuraCard>
               builder: (context, _) => _buildPulsatingDots(),
             ),
             const SizedBox(height: S.m),
-            Text(
-              'Aura подбирает практику…',
-              style: t.bodyMedium?.copyWith(color: C.textSec),
-            ),
+            Text('Aura подбирает практику…', style: t.bodyMedium),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmpty(TextTheme t) {
+    return SizedBox(
+      height: 140,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const AuraAvatar(size: 40),
+            const SizedBox(height: S.m),
+            Text('Aura пока думает…', style: t.bodyMedium),
+            const SizedBox(height: S.s),
+            Text('Потяни вниз для обновления', style: t.bodySmall),
           ],
         ),
       ),
@@ -130,8 +153,8 @@ class _AuraCardState extends State<AuraCard>
           child: Opacity(
             opacity: opacity,
             child: Container(
-              width: 10,
-              height: 10,
+              width: 8,
+              height: 8,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: colors[i],
@@ -149,125 +172,113 @@ class _AuraCardState extends State<AuraCard>
       children: [
         Row(
           children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: S.s, vertical: 4),
-              decoration: BoxDecoration(
-                color: C.primary.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(R.s),
-              ),
-              child: Text(
-                'Aura рекомендует',
-                style: t.labelSmall?.copyWith(
-                  color: C.accentLight,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+            const Hero(
+              tag: 'aura_avatar_home',
+              child: AuraAvatar(size: 28),
             ),
             const SizedBox(width: S.s),
-            const AuraAvatar(size: 40),
+            Text(
+              'Aura рекомендует',
+              style: t.labelSmall?.copyWith(
+                color: context.cTextSec,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
             const Spacer(),
             Text(
               '${m.durationMinutes} мин',
-              style: t.bodySmall?.copyWith(color: C.textDim),
+              style: t.labelSmall?.copyWith(color: context.cTextDim),
             ),
           ],
         ),
         const SizedBox(height: S.m),
         Text(
           m.title,
-          style: t.titleLarge?.copyWith(color: C.text, fontWeight: FontWeight.w700),
-        ),
-        const SizedBox(height: S.s),
-        Text(
-          widget.reason.isNotEmpty ? widget.reason : m.description,
-          maxLines: 3,
+          style: t.displayMedium,
+          maxLines: 2,
           overflow: TextOverflow.ellipsis,
-          style: t.bodyMedium?.copyWith(color: C.textSec, height: 1.4),
+        ),
+        if (widget.reason.isNotEmpty || m.description.isNotEmpty) ...[
+          const SizedBox(height: S.s),
+          Text(
+            widget.reason.isNotEmpty ? widget.reason : m.description,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: t.bodyMedium?.copyWith(height: 1.4),
+          ),
+        ],
+        const SizedBox(height: S.l),
+        Center(
+          child: _PlayButton(
+            pulseCtrl: _pulseCtrl,
+            reduceMotion: _reduceMotion,
+            onTap: () {
+              HapticFeedback.mediumImpact();
+              MeditationPlaybackCache.byId[m.id] = m;
+              context.push('/play?id=${Uri.encodeComponent(m.id)}');
+            },
+          ),
         ),
         const SizedBox(height: S.m),
-        Row(
-          children: [
-            ListenableBuilder(
-              listenable: _pulseCtrl,
-              builder: (context, _) => _buildPlayArea(context, m),
-            ),
-            const SizedBox(width: S.s),
-            Expanded(
-              child: Text(
-                'Слушать',
-                style: t.titleMedium?.copyWith(color: C.textSec),
+        Center(
+          child: GestureDetector(
+            onTap: () => context.push('/library'),
+            child: Text(
+              'или выбрать из библиотеки',
+              style: t.bodySmall?.copyWith(
+                color: C.primary,
+                decoration: TextDecoration.underline,
+                decorationColor: C.primary.withValues(alpha: 0.4),
               ),
             ),
-          ],
+          ),
         ),
       ],
     );
   }
+}
 
-  Widget _buildPlayArea(BuildContext context, Meditation m) {
-    final pulseScale =
-        _reduceMotion ? 1.0 : (1.0 + 0.03 * sin(_pulseCtrl.value * 2 * pi));
+class _PlayButton extends StatelessWidget {
+  const _PlayButton({
+    required this.pulseCtrl,
+    required this.reduceMotion,
+    required this.onTap,
+  });
 
-    return SizedBox(
-      width: 80,
-      height: 80,
-      child: Stack(
-        clipBehavior: Clip.none,
-        alignment: Alignment.center,
-        children: [
-          for (var i = 0; i < 3; i++) _buildRing(i),
-          Transform.scale(
-            scale: pulseScale,
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: () {
-                  HapticFeedback.mediumImpact();
-                  MeditationPlaybackCache.byId[m.id] = m;
-                  context.push('/play?id=${Uri.encodeComponent(m.id)}');
-                },
-                customBorder: const CircleBorder(),
-                borderRadius: BorderRadius.circular(R.full),
-                child: Ink(
-                  width: 64,
-                  height: 64,
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: C.gradientPrimary,
-                  ),
-                  child: const Icon(
-                    Icons.play_arrow_rounded,
-                    color: Colors.white,
-                    size: 40,
-                  ),
+  final AnimationController pulseCtrl;
+  final bool reduceMotion;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: pulseCtrl,
+      builder: (context, _) {
+        final glowOpacity = reduceMotion
+            ? 0.15
+            : (0.1 + 0.1 * sin(pulseCtrl.value * 2 * pi));
+        return GestureDetector(
+          onTap: onTap,
+          child: Container(
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: C.gradientPrimary,
+              boxShadow: [
+                BoxShadow(
+                  color: C.primary.withValues(alpha: glowOpacity),
+                  blurRadius: 24,
+                  spreadRadius: 4,
                 ),
-              ),
+              ],
+            ),
+            child: const Center(
+              child: MIcon(MIconType.play, color: Colors.white, size: 32),
             ),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRing(int index) {
-    final offset = index * 0.3;
-    final progress = (_pulseCtrl.value + offset) % 1.0;
-    final scale = 1.0 + 0.5 * progress;
-    final opacity = (0.3 * (1.0 - progress)).clamp(0.0, 1.0);
-
-    return Transform.scale(
-      scale: scale,
-      child: Container(
-        width: 64,
-        height: 64,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: C.primary.withValues(alpha: opacity),
-            width: 1.5,
-          ),
-        ),
-      ),
+        );
+      },
     );
   }
 }

@@ -1,13 +1,11 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/physics.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:meditator/app/theme.dart';
 import 'package:meditator/shared/utils/accessibility.dart';
-import 'package:meditator/shared/utils/spring_utils.dart';
-import 'package:meditator/shared/widgets/custom_icons.dart';
+import 'package:meditator/shared/widgets/connectivity_banner.dart';
 
 class AppShell extends StatefulWidget {
   final Widget child;
@@ -17,15 +15,28 @@ class AppShell extends StatefulWidget {
   State<AppShell> createState() => _AppShellState();
 }
 
-class _AppShellState extends State<AppShell> with TickerProviderStateMixin {
-  int _prevIdx = 0;
+class _AppShellState extends State<AppShell> with SingleTickerProviderStateMixin {
+  late final AnimationController _indicatorCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _indicatorCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 250),
+    );
+  }
+
+  @override
+  void dispose() {
+    _indicatorCtrl.dispose();
+    super.dispose();
+  }
 
   int _idx(BuildContext ctx) {
     final loc = GoRouterState.of(ctx).uri.path;
-    if (loc.startsWith('/garden')) return 1;
-    if (loc.startsWith('/breathing')) return 2;
-    if (loc.startsWith('/journal')) return 3;
-    if (loc.startsWith('/profile')) return 4;
+    if (loc.startsWith('/journal')) return 1;
+    if (loc.startsWith('/you')) return 2;
     return 0;
   }
 
@@ -33,71 +44,102 @@ class _AppShellState extends State<AppShell> with TickerProviderStateMixin {
     final current = _idx(context);
     if (current == target) return;
     HapticFeedback.selectionClick();
-    const paths = ['/home', '/garden', '/breathing', '/journal', '/profile'];
+    const paths = ['/practice', '/journal', '/you'];
     context.go(paths[target]);
   }
 
   @override
   Widget build(BuildContext context) {
     final i = _idx(context);
-    final changed = i != _prevIdx;
-    _prevIdx = i;
 
     return Scaffold(
-      body: widget.child,
-      bottomNavigationBar: ClipRRect(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-          child: Container(
-            decoration: const BoxDecoration(
-              color: Color(0x0FFFFFFF),
-              border: Border(
-                top: BorderSide(color: C.surfaceBorder, width: 0.5),
-              ),
-            ),
+      body: Stack(
+        children: [
+          ConnectivityBanner(child: widget.child),
+          Positioned(
+            left: S.m,
+            right: S.m,
+            bottom: 0,
             child: SafeArea(
               top: false,
               child: Padding(
-                padding: const EdgeInsets.only(top: 8, bottom: 2),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    _NavTab(
-                      iconType: NavIconType.home,
-                      label: 'Главная',
-                      active: i == 0,
-                      justActivated: changed && i == 0,
-                      onTap: () => _onTap(context, 0),
-                    ),
-                    _NavTab(
-                      iconType: NavIconType.garden,
-                      label: 'Сад',
-                      active: i == 1,
-                      justActivated: changed && i == 1,
-                      onTap: () => _onTap(context, 1),
-                    ),
-                    _NavTab(
-                      iconType: NavIconType.breathing,
-                      label: 'Дыхание',
-                      active: i == 2,
-                      justActivated: changed && i == 2,
-                      onTap: () => _onTap(context, 2),
-                    ),
-                    _NavTab(
-                      iconType: NavIconType.journal,
-                      label: 'Журнал',
-                      active: i == 3,
-                      justActivated: changed && i == 3,
-                      onTap: () => _onTap(context, 3),
-                    ),
-                    _NavTab(
-                      iconType: NavIconType.profile,
-                      label: 'Профиль',
-                      active: i == 4,
-                      justActivated: changed && i == 4,
-                      onTap: () => _onTap(context, 4),
-                    ),
-                  ],
+                padding: const EdgeInsets.only(bottom: S.m),
+                child: _NavBar(
+                  currentIndex: i,
+                  onTap: (idx) => _onTap(context, idx),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NavBar extends StatelessWidget {
+  const _NavBar({
+    required this.currentIndex,
+    required this.onTap,
+  });
+
+  final int currentIndex;
+  final ValueChanged<int> onTap;
+
+  static const _icons = [
+    Icons.self_improvement_rounded,
+    Icons.book_rounded,
+    Icons.person_rounded,
+  ];
+  static const _labels = ['Практика', 'Журнал', 'Ты'];
+  static const double _h = 56;
+
+  @override
+  Widget build(BuildContext context) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(R.full),
+        boxShadow: [
+          BoxShadow(
+            color: isLight
+                ? Colors.black.withValues(alpha: 0.06)
+                : Colors.black.withValues(alpha: 0.3),
+            blurRadius: 20,
+            spreadRadius: -4,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(R.full),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
+          child: Container(
+            height: _h,
+            decoration: BoxDecoration(
+              color: isLight
+                  ? Colors.white.withValues(alpha: 0.85)
+                  : Colors.white.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(R.full),
+              border: Border.all(
+                color: isLight
+                    ? Colors.black.withValues(alpha: 0.04)
+                    : Colors.white.withValues(alpha: 0.06),
+                width: 0.5,
+              ),
+            ),
+            child: Row(
+              children: List.generate(
+                3,
+                (i) => Expanded(
+                  child: _NavItem(
+                    icon: _icons[i],
+                    label: _labels[i],
+                    active: currentIndex == i,
+                    onTap: () => onTap(i),
+                  ),
                 ),
               ),
             ),
@@ -108,152 +150,76 @@ class _AppShellState extends State<AppShell> with TickerProviderStateMixin {
   }
 }
 
-class _NavTab extends StatefulWidget {
-  final NavIconType iconType;
-  final String label;
-  final bool active;
-  final bool justActivated;
-  final VoidCallback onTap;
-  const _NavTab({
-    required this.iconType,
+class _NavItem extends StatelessWidget {
+  const _NavItem({
+    required this.icon,
     required this.label,
     required this.active,
-    required this.justActivated,
     required this.onTap,
   });
 
-  @override
-  State<_NavTab> createState() => _NavTabState();
-}
-
-class _NavTabState extends State<_NavTab> with SingleTickerProviderStateMixin {
-  late final AnimationController _scaleCtrl;
-
-  @override
-  void initState() {
-    super.initState();
-    _scaleCtrl = AnimationController(
-      vsync: this,
-      lowerBound: 1.0,
-      upperBound: 1.15,
-    );
-  }
-
-  @override
-  void didUpdateWidget(covariant _NavTab old) {
-    super.didUpdateWidget(old);
-    final reduceMotion = AccessibilityUtils.reduceMotion(context);
-    if (reduceMotion) return;
-    if (widget.justActivated && !old.active) {
-      _scaleCtrl.stop();
-      _scaleCtrl.value = 1.0;
-      _scaleCtrl
-          .animateWith(
-            SpringSimulation(SpringUtils.gentle, 1.0, 1.15, 0.0),
-          )
-          .then((_) {
-            if (!mounted) return;
-            _scaleCtrl.animateWith(
-              SpringSimulation(SpringUtils.gentle, 1.15, 1.0, 0.0),
-            );
-          });
-    }
-  }
-
-  @override
-  void dispose() {
-    _scaleCtrl.dispose();
-    super.dispose();
-  }
+  final IconData icon;
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final active = widget.active;
-    final semanticLabel = '${widget.label}, вкладка';
+    final reduceMotion = AccessibilityUtils.reduceMotion(context);
+    final dur = reduceMotion ? Duration.zero : Anim.fast;
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    final activeColor = isLight ? C.primary : Colors.white;
+    final inactiveColor = context.cTextDim;
 
     return Semantics(
       button: true,
       selected: active,
-      label: semanticLabel,
+      label: '$label, вкладка',
       child: Tooltip(
-        message: widget.label,
+        message: label,
+        excludeFromSemantics: true,
         child: GestureDetector(
-          onTap: widget.onTap,
+          onTap: onTap,
           behavior: HitTestBehavior.opaque,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            child: AnimatedBuilder(
-              animation: _scaleCtrl,
-              builder: (context, child) => Transform.scale(
-                scale: active ? _scaleCtrl.value : 1.0,
-                child: child,
+          child: Center(
+            child: AnimatedContainer(
+              duration: dur,
+              curve: Anim.curve,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(R.full),
+                color: active
+                    ? (isLight
+                        ? C.primary.withValues(alpha: 0.1)
+                        : Colors.white.withValues(alpha: 0.1))
+                    : Colors.transparent,
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _buildIcon(active),
-                  const SizedBox(height: 3),
-                  _buildLabel(active),
-                  const SizedBox(height: 3),
-                  _buildGlowDot(active),
+                  AnimatedSwitcher(
+                    duration: dur,
+                    child: Icon(
+                      icon,
+                      key: ValueKey('${icon.hashCode}_$active'),
+                      size: 22,
+                      color: active ? activeColor : inactiveColor,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: active ? FontWeight.w600 : FontWeight.w500,
+                      color: active ? activeColor : inactiveColor,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.clip,
+                  ),
                 ],
               ),
             ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildIcon(bool active) {
-    final icon = CustomNavIcon(
-      type: widget.iconType,
-      size: 22,
-      color: active ? Colors.white : C.textDim,
-    );
-    if (!active) return icon;
-    return ShaderMask(
-      shaderCallback: (bounds) => C.gradientPrimary.createShader(bounds),
-      blendMode: BlendMode.srcIn,
-      child: icon,
-    );
-  }
-
-  Widget _buildLabel(bool active) {
-    final style = TextStyle(
-      fontSize: 10,
-      fontWeight: active ? FontWeight.w600 : FontWeight.w400,
-      color: active ? Colors.white : C.textDim,
-    );
-
-    if (!active) return Text(widget.label, style: style);
-
-    return ShaderMask(
-      shaderCallback: (bounds) => C.gradientPrimary.createShader(bounds),
-      blendMode: BlendMode.srcIn,
-      child: Text(widget.label, style: style),
-    );
-  }
-
-  Widget _buildGlowDot(bool active) {
-    final reduceMotion = AccessibilityUtils.reduceMotion(context);
-    return AnimatedScale(
-      scale: active ? 1.0 : 0.0,
-      duration: reduceMotion ? Duration.zero : const Duration(milliseconds: 250),
-      curve: Curves.easeOutCubic,
-      child: AnimatedOpacity(
-        opacity: active ? 1.0 : 0.0,
-        duration: reduceMotion ? Duration.zero : const Duration(milliseconds: 250),
-        curve: Curves.easeOutCubic,
-        child: Container(
-          width: 3,
-          height: 3,
-          decoration: const BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: C.gradientPrimary,
-            boxShadow: [
-              BoxShadow(color: C.glowPrimary, blurRadius: 6, spreadRadius: 1),
-            ],
           ),
         ),
       ),

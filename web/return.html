@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Оплата — Meditator</title>
+<meta name="theme-color" content="#030712">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#030712;--surface:#0C1425;--primary:#6366F1;--accent:#2DD4BF;--accent-soft:rgba(45,212,191,.1);--gold:#D4A853;--rose:#E8668A;--text:#E8ECF4;--text2:#8B95A8;--text3:#5A6478;--border:rgba(255,255,255,.06);--font:'Inter',system-ui,sans-serif;--display:'Playfair Display',Georgia,serif}
+html{-webkit-font-smoothing:antialiased}
+body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh;min-height:100svh;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.aurora{position:fixed;inset:0;pointer-events:none;overflow:hidden}
+.aurora b{position:absolute;border-radius:50%;filter:blur(140px);opacity:.12}
+.aurora b:nth-child(1){width:500px;height:500px;background:var(--primary);top:-180px;left:-100px;animation:a 25s ease-in-out infinite alternate}
+.aurora b:nth-child(2){width:400px;height:400px;background:var(--accent);bottom:-120px;right:-120px;animation:a 30s ease-in-out infinite alternate-reverse}
+@keyframes a{0%{transform:translate(0,0)}100%{transform:translate(50px,-40px) scale(1.1)}}
+.grain{position:fixed;inset:0;pointer-events:none;opacity:.025;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+.card{position:relative;z-index:1;max-width:420px;width:90%;padding:48px 36px;border-radius:20px;background:rgba(12,20,37,.65);border:1px solid var(--border);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);text-align:center;animation:show .6s cubic-bezier(.22,1,.36,1)}
+@keyframes show{from{opacity:0;transform:scale(.96) translateY(10px)}to{opacity:1;transform:none}}
+.icon{width:68px;height:68px;border-radius:18px;margin:0 auto 24px;display:flex;align-items:center;justify-content:center;transition:all .6s cubic-bezier(.22,1,.36,1)}
+.icon.--loading{background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.15)}
+.icon.--ok{background:var(--accent-soft);border:1px solid rgba(45,212,191,.15)}
+.icon.--err{background:rgba(232,102,138,.1);border:1px solid rgba(232,102,138,.15)}
+.icon svg{width:30px;height:30px;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:all .4s}
+.spin-icon{animation:sp .8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+h1{font-family:var(--display);font-size:28px;font-weight:400;margin-bottom:10px;letter-spacing:-.02em;transition:all .4s}
+p{font-size:14px;color:var(--text2);line-height:1.75;margin-bottom:28px;transition:all .4s}
+.hl{color:var(--accent);font-weight:500}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:13px 32px;border-radius:12px;background:linear-gradient(135deg,var(--primary),#4F46E5);color:#fff;font-weight:600;font-size:14px;border:none;cursor:pointer;font-family:var(--font);text-decoration:none;transition:all .25s;box-shadow:0 2px 16px rgba(99,102,241,.2);opacity:0;transform:translateY(8px)}
+.btn.--show{opacity:1;transform:none;transition:all .5s cubic-bezier(.22,1,.36,1)}
+.btn:hover{transform:translateY(-1px);box-shadow:0 4px 24px rgba(99,102,241,.3)}
+.note{margin-top:16px;font-size:11px;color:var(--text3);opacity:0;transition:opacity .5s .2s}
+.note.--show{opacity:1}
+</style>
+</head>
+<body>
+
+<div class="aurora"><b></b><b></b></div>
+<div class="grain"></div>
+
+<div class="card">
+  <div class="icon --loading" id="icon">
+    <svg viewBox="0 0 24 24" stroke="var(--primary)" class="spin-icon"><path d="M21 12a9 9 0 11-6.22-8.56"/></svg>
+  </div>
+  <h1 id="title">Обработка платежа</h1>
+  <p id="text">Проверяем статус оплаты. Это займёт пару секунд.</p>
+  <a class="btn" id="cta" href="/">Вернуться на главную</a>
+  <p class="note" id="note"></p>
+</div>
+
+<script>
+const token = localStorage.getItem('mt_at');
+let attempts = 0;
+const maxAttempts = 15;
+
+function showSuccess() {
+  const icon = document.getElementById('icon');
+  icon.className = 'icon --ok';
+  icon.innerHTML = '<svg viewBox="0 0 24 24" stroke="var(--accent)"><polyline points="20 6 9 17 4 12"/></svg>';
+  document.getElementById('title').textContent = 'Добро пожаловать в Premium';
+  document.getElementById('text').innerHTML = 'Подписка активирована. Откройте <span class="hl">Meditator</span>, чтобы начать пользоваться всеми возможностями.';
+  document.getElementById('cta').classList.add('--show');
+  document.getElementById('note').textContent = 'Квитанция отправлена на вашу почту';
+  document.getElementById('note').classList.add('--show');
+}
+
+function showError(msg) {
+  const icon = document.getElementById('icon');
+  icon.className = 'icon --err';
+  icon.innerHTML = '<svg viewBox="0 0 24 24" stroke="var(--rose)"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>';
+  document.getElementById('title').textContent = 'Не удалось подтвердить';
+  document.getElementById('text').textContent = msg || 'Платёж не подтверждён. Если средства списаны, подписка активируется автоматически в течение нескольких минут.';
+  document.getElementById('cta').classList.add('--show');
+}
+
+async function checkStatus() {
+  if (!token) {
+    showError('Войдите в аккаунт, чтобы проверить статус подписки.');
+    return;
+  }
+  attempts++;
+  try {
+    const r = await fetch('/subscriptions/me', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if (r.ok) {
+      const data = await r.json();
+      if (data && data.status === 'active') {
+        showSuccess();
+        return;
+      }
+    }
+  } catch (_) {}
+
+  if (attempts >= maxAttempts) {
+    showError();
+    return;
+  }
+  setTimeout(checkStatus, 2000);
+}
+
+checkStatus();
+</script>
+
+</body>
+</html>

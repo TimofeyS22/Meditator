@@ -1,4 +1,5 @@
 import 'package:equatable/equatable.dart';
+import 'package:flutter/material.dart';
 
 T? _enumByName<T extends Enum>(List<T> values, String? name) {
   if (name == null || name.isEmpty) return null;
@@ -29,14 +30,16 @@ extension MeditationGoalX on MeditationGoal {
         MeditationGoal.relationships => 'Отношения',
       };
 
-  String get emoji => switch (this) {
-        MeditationGoal.sleep => '😴',
-        MeditationGoal.stress => '🧘',
-        MeditationGoal.focus => '🎯',
-        MeditationGoal.anxiety => '💭',
-        MeditationGoal.selfGrowth => '🌱',
-        MeditationGoal.happiness => '✨',
-        MeditationGoal.relationships => '💜',
+  String get emoji => '';
+
+  IconData get iconData => switch (this) {
+        MeditationGoal.sleep => Icons.bedtime_rounded,
+        MeditationGoal.stress => Icons.self_improvement_rounded,
+        MeditationGoal.focus => Icons.center_focus_strong_rounded,
+        MeditationGoal.anxiety => Icons.cloud_rounded,
+        MeditationGoal.selfGrowth => Icons.eco_rounded,
+        MeditationGoal.happiness => Icons.auto_awesome_rounded,
+        MeditationGoal.relationships => Icons.people_rounded,
       };
 }
 

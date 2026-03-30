@@ -229,9 +229,9 @@ class _PairScreenState extends State<PairScreen> {
                             Row(
                               children: [
                                 IconButton(
-                                  icon: const Icon(
+                                  icon: Icon(
                                       Icons.arrow_back_ios_new_rounded,
-                                      color: C.text),
+                                      color: context.cText),
                                   tooltip: 'Назад',
                                   onPressed: () => context.pop(),
                                 ),
@@ -263,7 +263,7 @@ class _PairScreenState extends State<PairScreen> {
                                 goalLabel: (s) {
                                   final g = _goalByName(s);
                                   return g != null
-                                      ? '${g.emoji} ${g.label}'
+                                      ? g.label
                                       : s;
                                 },
                               ),
@@ -276,9 +276,7 @@ class _PairScreenState extends State<PairScreen> {
                                       child: Column(
                                         children: [
                                           Text('Твоя серия',
-                                              style: theme.textTheme.bodySmall
-                                                  ?.copyWith(
-                                                      color: C.textDim)),
+                                              style: theme.textTheme.bodySmall),
                                           const SizedBox(height: S.xs),
                                           AnimatedNumber(
                                             value: _partnership!.myStreak,
@@ -292,7 +290,7 @@ class _PairScreenState extends State<PairScreen> {
                                           Text('дней',
                                               style: theme.textTheme.bodySmall
                                                   ?.copyWith(
-                                                      color: C.textSec)),
+                                                      color: context.cTextSec)),
                                         ],
                                       ),
                                     ),
@@ -304,9 +302,7 @@ class _PairScreenState extends State<PairScreen> {
                                       child: Column(
                                         children: [
                                           Text('У партнёра',
-                                              style: theme.textTheme.bodySmall
-                                                  ?.copyWith(
-                                                      color: C.textDim)),
+                                              style: theme.textTheme.bodySmall),
                                           const SizedBox(height: S.xs),
                                           AnimatedNumber(
                                             value:
@@ -321,7 +317,7 @@ class _PairScreenState extends State<PairScreen> {
                                           Text('дней',
                                               style: theme.textTheme.bodySmall
                                                   ?.copyWith(
-                                                      color: C.textSec)),
+                                                      color: context.cTextSec)),
                                         ],
                                       ),
                                     ),
@@ -370,7 +366,7 @@ class _PairScreenState extends State<PairScreen> {
                                         'Ты круто держишь ритм — горжусь тобой!',
                                       ),
                                       semanticLabel: 'Отправить поддержку партнёру',
-                                      child: const Text('Подбодрить 💪'),
+                                      child: const Text('Подбодрить'),
                                     ),
                                   ),
                                   const SizedBox(width: S.s),
@@ -382,7 +378,7 @@ class _PairScreenState extends State<PairScreen> {
                                       ),
                                       glowColor: C.glowAccent,
                                       semanticLabel: 'Отправить напоминание партнёру',
-                                      child: const Text('Напомнить 🔔'),
+                                      child: const Text('Напомнить'),
                                     ),
                                   ),
                                 ],
@@ -402,8 +398,7 @@ class _PairScreenState extends State<PairScreen> {
                         child: Center(
                           child: Text(
                             'Пока тихо — отправь первое сообщение',
-                            style: theme.textTheme.bodyMedium
-                                ?.copyWith(color: C.textSec),
+                            style: theme.textTheme.bodyMedium,
                           ),
                         ),
                       )
@@ -439,9 +434,7 @@ class _PairScreenState extends State<PairScreen> {
                                             timeFmt.format(
                                                 m.createdAt.toLocal()),
                                             style: theme
-                                                .textTheme.bodySmall
-                                                ?.copyWith(
-                                                    color: C.textDim),
+                                                .textTheme.bodySmall,
                                           ),
                                         ],
                                       ),
@@ -462,14 +455,33 @@ class _PairScreenState extends State<PairScreen> {
                       SliverToBoxAdapter(
                         child: Padding(
                           padding: const EdgeInsets.all(S.m),
-                          child: GlowButton(
-                            onPressed: () =>
-                                context.push('/play?id=sync_pair'),
-                            width: double.infinity,
-                            showGlow: true,
-                            semanticLabel: 'Запустить совместную медитацию',
-                            child: const Text('Медитировать вместе'),
-                          ),
+                          child: Column(
+                          children: [
+                            GlowButton(
+                              onPressed: () => context.push('/pair/live'),
+                              width: double.infinity,
+                              showGlow: true,
+                              semanticLabel: 'Живая медитация с партнёром',
+                              child: const Text('Живая медитация'),
+                            ),
+                            const SizedBox(height: S.s),
+                            GlowButton(
+                              onPressed: () async {
+                                final meds = await Db.instance.getMeditations();
+                                if (meds.isEmpty) return;
+                                meds.shuffle();
+                                final id = meds.first['id'] as String? ?? '';
+                                if (id.isNotEmpty && context.mounted) {
+                                  context.push('/play?id=${Uri.encodeComponent(id)}');
+                                }
+                              },
+                              width: double.infinity,
+                              glowColor: C.glowAccent,
+                              semanticLabel: 'Запустить совместную медитацию',
+                              child: const Text('Медитировать вместе'),
+                            ),
+                          ],
+                        ),
                         ),
                       ),
                   ],
@@ -502,14 +514,14 @@ class _NoPartnerCard extends StatelessWidget {
           Text(
             'С партнёром до 95% людей чаще не бросают практику — вы держите друг друга в фокусе и честно делитесь прогрессом.',
             style: theme.textTheme.bodyLarge
-                ?.copyWith(color: C.textSec, height: 1.45),
+                ?.copyWith(height: 1.45),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: S.s),
           Text(
             'Aura подберёт похожие цели или пришли другу код — и вы в одной волне.',
             style: theme.textTheme.bodyMedium
-                ?.copyWith(color: C.textDim, height: 1.4),
+                ?.copyWith(color: context.cTextDim, height: 1.4),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: S.l),
@@ -613,7 +625,7 @@ class _PartnerGoals extends StatelessWidget {
     return Column(
       children: [
         Text('Общие цели',
-            style: theme.textTheme.titleSmall?.copyWith(color: C.textSec)),
+            style: theme.textTheme.titleSmall?.copyWith(color: context.cTextSec)),
         const SizedBox(height: S.s),
         Wrap(
           spacing: S.s,
@@ -623,13 +635,13 @@ class _PartnerGoals extends StatelessWidget {
               ? [
                   Text('Скоро добавите вместе',
                       style: theme.textTheme.bodyMedium
-                          ?.copyWith(color: C.textDim)),
+                          ?.copyWith(color: context.cTextDim)),
                 ]
               : partnership.sharedGoals
                   .map(
                     (s) => Chip(
                       label: Text(goalLabel(s)),
-                      backgroundColor: C.surfaceLight,
+                      backgroundColor: context.cSurfaceLight,
                       side: BorderSide.none,
                       labelStyle: theme.textTheme.bodySmall,
                     ),

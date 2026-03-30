@@ -5,7 +5,7 @@ import 'package:meditator/app/theme.dart';
 import 'package:meditator/shared/utils/accessibility.dart';
 import 'package:meditator/shared/widgets/glow_button.dart';
 
-enum EmptyStateType { journal, garden, partner }
+enum EmptyStateType { journal, garden, partner, meditation, offline }
 
 class EmptyState extends StatefulWidget {
   const EmptyState({
@@ -75,23 +75,37 @@ class _EmptyStateState extends State<EmptyState>
             Semantics(
               label: 'Иллюстрация пустого состояния',
               child: SizedBox(
-                width: 120,
-                height: 120,
-                child: CustomPaint(
-                  painter: _EmptyIllustrationPainter(
-                    type: widget.type,
-                    progress: progress,
-                  ),
+                width: 160,
+                height: 160,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    if (!_reduceMotion)
+                      CustomPaint(
+                        size: const Size(160, 160),
+                        painter: _AmbientGlowPainter(
+                          progress: progress,
+                          type: widget.type,
+                        ),
+                      ),
+                    CustomPaint(
+                      size: const Size(120, 120),
+                      painter: _EmptyIllustrationPainter(
+                        type: widget.type,
+                        progress: progress,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
-            const SizedBox(height: S.m),
+            const SizedBox(height: S.l),
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 300),
               child: Text(
                 widget.title,
                 textAlign: TextAlign.center,
-                style: t.headlineSmall?.copyWith(color: C.text),
+                style: t.headlineSmall,
               ),
             ),
             if (widget.subtitle != null) ...[
@@ -101,7 +115,7 @@ class _EmptyStateState extends State<EmptyState>
                 child: Text(
                   widget.subtitle!,
                   textAlign: TextAlign.center,
-                  style: t.bodyMedium?.copyWith(color: C.textSec, height: 1.45),
+                  style: t.bodyMedium?.copyWith(height: 1.45),
                 ),
               ),
             ],
@@ -109,6 +123,7 @@ class _EmptyStateState extends State<EmptyState>
               const SizedBox(height: S.l),
               GlowButton(
                 onPressed: widget.onAction,
+                showGlow: true,
                 semanticLabel: widget.actionLabel,
                 child: Text(widget.actionLabel!),
               ),
@@ -139,6 +154,12 @@ class _EmptyIllustrationPainter extends CustomPainter {
         break;
       case EmptyStateType.partner:
         _paintPartner(canvas, size);
+        break;
+      case EmptyStateType.meditation:
+        _paintMeditation(canvas, size);
+        break;
+      case EmptyStateType.offline:
+        _paintOffline(canvas, size);
         break;
     }
   }
@@ -376,7 +397,144 @@ class _EmptyIllustrationPainter extends CustomPainter {
     canvas.drawPath(p, fill);
   }
 
+  void _paintMeditation(Canvas canvas, Size size) {
+    final cx = size.width / 2;
+    final cy = size.height * 0.5;
+
+    final glow = Paint()
+      ..color = C.primary.withValues(alpha: 0.12)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 18);
+    final breathe = 0.8 + 0.2 * sin(progress * 2 * pi);
+    canvas.drawCircle(Offset(cx, cy), 36 * breathe, glow);
+
+    final ring = Paint()
+      ..color = C.primary.withValues(alpha: 0.4)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = _sw;
+    canvas.drawCircle(Offset(cx, cy), 28 * breathe, ring);
+    canvas.drawCircle(Offset(cx, cy), 20 * breathe, ring..color = C.accent.withValues(alpha: 0.3));
+
+    final figurePaint = Paint()
+      ..color = C.primary.withValues(alpha: 0.6)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = _sw
+      ..strokeCap = StrokeCap.round;
+    canvas.drawCircle(Offset(cx, cy - 18), 6, figurePaint);
+    canvas.drawLine(Offset(cx, cy - 12), Offset(cx, cy + 4), figurePaint);
+    canvas.drawLine(Offset(cx - 10, cy - 6), Offset(cx + 10, cy - 6), figurePaint);
+    canvas.drawLine(Offset(cx, cy + 4), Offset(cx - 8, cy + 16), figurePaint);
+    canvas.drawLine(Offset(cx, cy + 4), Offset(cx + 8, cy + 16), figurePaint);
+
+    final notePaint = Paint()
+      ..color = C.accent.withValues(alpha: 0.5)
+      ..style = PaintingStyle.fill;
+    for (var i = 0; i < 4; i++) {
+      final phase = i * 1.5;
+      final a = progress * 2 * pi + phase;
+      final r = 32.0 + 8 * sin(a * 0.7);
+      final nx = cx + cos(a) * r;
+      final ny = cy + sin(a * 1.3) * r * 0.6;
+      canvas.drawCircle(Offset(nx, ny), 1.5 + sin(a) * 0.5, notePaint);
+    }
+  }
+
+  void _paintOffline(Canvas canvas, Size size) {
+    final cx = size.width / 2;
+    final cy = size.height * 0.5;
+
+    final cloudPaint = Paint()
+      ..color = C.textSec.withValues(alpha: 0.3)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = _sw
+      ..strokeCap = StrokeCap.round;
+
+    final path = Path()
+      ..moveTo(cx - 24, cy + 4)
+      ..quadraticBezierTo(cx - 30, cy - 12, cx - 14, cy - 14)
+      ..quadraticBezierTo(cx - 10, cy - 28, cx + 4, cy - 22)
+      ..quadraticBezierTo(cx + 20, cy - 30, cx + 24, cy - 14)
+      ..quadraticBezierTo(cx + 36, cy - 10, cx + 28, cy + 4)
+      ..close();
+    canvas.drawPath(path, cloudPaint);
+    canvas.drawPath(path, cloudPaint..style = PaintingStyle.fill..color = C.textSec.withValues(alpha: 0.08));
+
+    final crossPaint = Paint()
+      ..color = C.error.withValues(alpha: 0.6)
+      ..strokeWidth = 2.0
+      ..strokeCap = StrokeCap.round;
+    canvas.drawLine(Offset(cx - 10, cy + 14), Offset(cx + 10, cy + 26), crossPaint);
+    canvas.drawLine(Offset(cx + 10, cy + 14), Offset(cx - 10, cy + 26), crossPaint);
+  }
+
   @override
   bool shouldRepaint(covariant _EmptyIllustrationPainter oldDelegate) =>
       oldDelegate.type != type || oldDelegate.progress != progress;
+}
+
+class _AmbientGlowPainter extends CustomPainter {
+  _AmbientGlowPainter({required this.progress, required this.type});
+
+  final double progress;
+  final EmptyStateType type;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final t = progress * 2 * pi;
+    final breathe = 0.7 + 0.3 * ((sin(t) + 1) / 2);
+
+    final Color base;
+    final Color secondary;
+    switch (type) {
+      case EmptyStateType.journal:
+        base = C.primary;
+        secondary = C.accent;
+      case EmptyStateType.garden:
+        base = C.accent;
+        secondary = C.calm;
+      case EmptyStateType.partner:
+        base = C.rose;
+        secondary = C.primary;
+      case EmptyStateType.meditation:
+        base = C.primary;
+        secondary = C.calm;
+      case EmptyStateType.offline:
+        base = C.textSec;
+        secondary = C.surfaceLight;
+    }
+
+    canvas.drawCircle(
+      center,
+      size.width * 0.4 * breathe,
+      Paint()
+        ..color = base.withValues(alpha: 0.08 * breathe)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 24),
+    );
+
+    canvas.drawCircle(
+      Offset(center.dx + 10 * cos(t * 0.5), center.dy + 8 * sin(t * 0.3)),
+      size.width * 0.25 * breathe,
+      Paint()
+        ..color = secondary.withValues(alpha: 0.06 * breathe)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 16),
+    );
+
+    for (var i = 0; i < 8; i++) {
+      final phase = i * 0.78;
+      final angle = t * 0.4 + phase;
+      final dist = size.width * 0.3 + 10 * sin(t + i);
+      final px = center.dx + cos(angle) * dist;
+      final py = center.dy + sin(angle) * dist;
+      final alpha = (0.3 + 0.3 * sin(t * 2 + i * 0.9)).clamp(0.0, 1.0);
+      canvas.drawCircle(
+        Offset(px, py),
+        1.2 + 0.4 * sin(t + i),
+        Paint()..color = Colors.white.withValues(alpha: alpha * 0.5),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _AmbientGlowPainter old) =>
+      old.progress != progress || old.type != type;
 }

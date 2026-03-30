@@ -2,11 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
 import 'package:meditator/app/theme.dart';
+import 'package:meditator/core/auth/auth_service.dart';
+import 'package:meditator/core/database/db.dart';
 import 'package:meditator/shared/models/user_profile.dart';
+import 'package:meditator/shared/widgets/custom_icons.dart';
 import 'package:meditator/shared/widgets/glass_card.dart';
 import 'package:meditator/shared/widgets/gradient_bg.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:meditator/main.dart' show themeNotifier, setThemeMode;
 
 const _kDuration = 'settings_preferred_duration';
 const _kVoice = 'settings_preferred_voice';
@@ -63,30 +67,47 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final p = await SharedPreferences.getInstance();
     await p.setString(_kDuration, v.name);
     setState(() => _duration = v);
+    _syncToBackend();
   }
 
   Future<void> _saveVoice(PreferredVoice v) async {
     final p = await SharedPreferences.getInstance();
     await p.setString(_kVoice, v.jsonName);
     setState(() => _voice = v);
+    _syncToBackend();
   }
 
   Future<void> _saveHour(int h) async {
     final p = await SharedPreferences.getInstance();
     await p.setInt(_kHour, h);
     setState(() => _timeHour = h);
+    _syncToBackend();
   }
 
   Future<void> _saveNotifPractice(bool v) async {
     final p = await SharedPreferences.getInstance();
     await p.setBool(_kNotifPractice, v);
     setState(() => _notifPractice = v);
+    _syncToBackend();
   }
 
   Future<void> _saveNotifPartner(bool v) async {
     final p = await SharedPreferences.getInstance();
     await p.setBool(_kNotifPartner, v);
     setState(() => _notifPartner = v);
+    _syncToBackend();
+  }
+
+  void _syncToBackend() {
+    final uid = AuthService.instance.userId;
+    if (uid == null || uid.isEmpty) return;
+    Db.instance.upsertProfile({
+      'preferred_duration': _duration.name,
+      'preferred_voice': _voice.jsonName,
+      'preferred_time_hour': _timeHour,
+      'notif_practice': _notifPractice,
+      'notif_partner': _notifPartner,
+    });
   }
 
   Future<void> _pickDuration() async {
@@ -103,7 +124,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 (d) => ListTile(
                   title: Text(d.label),
                   trailing: _duration == d
-                      ? const Icon(Icons.check_rounded, color: C.accent)
+                      ? const MIcon(MIconType.check, color: C.accent)
                       : null,
                   onTap: () => Navigator.pop(ctx, d),
                 ),
@@ -133,7 +154,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     PreferredVoice.any => 'Любой',
                   }),
                   trailing: _voice == v
-                      ? const Icon(Icons.check_rounded, color: C.accent)
+                      ? const MIcon(MIconType.check, color: C.accent)
                       : null,
                   onTap: () => Navigator.pop(ctx, v),
                 ),
@@ -161,7 +182,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               return ListTile(
                 title: Text('${i.toString().padLeft(2, '0')}:00'),
                 trailing: _timeHour == i
-                    ? const Icon(Icons.check_rounded, color: C.accent)
+                    ? const MIcon(MIconType.check, color: C.accent)
                     : null,
                 onTap: () => Navigator.pop(ctx, i),
               );
@@ -202,9 +223,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ],
       ),
     );
-    if (ok == true && mounted) {
+    if (ok != true || !mounted) return;
+    final success = await Db.instance.deleteAccount();
+    if (!mounted) return;
+    if (success) {
+      await AuthService.instance.signOut();
+      if (mounted) context.go('/onboarding');
+    } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Запрос отправлен')),
+        const SnackBar(content: Text('Не удалось удалить аккаунт. Попробуйте позже.')),
       );
     }
   }
@@ -225,7 +252,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Row(
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.arrow_back_rounded, color: C.text),
+                    icon: MIcon(MIconType.arrowBack, color: context.cText),
                     tooltip: 'Назад',
                     onPressed: () => context.pop(),
                   ),
@@ -244,6 +271,48 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(S.m, S.s, S.m, S.xxl),
                 children: [
+                  _SectionTitle(title: 'Тема')
+                      .animate()
+                      .fadeIn(duration: Anim.normal),
+                  ValueListenableBuilder<ThemeMode>(
+                    valueListenable: themeNotifier,
+                    builder: (context, mode, _) {
+                      return GlassCard(
+                        padding: EdgeInsets.zero,
+                        semanticLabel: 'Выбор темы приложения',
+                        child: Column(
+                          children: [
+                            _ThemeTile(
+                              label: 'Системная',
+                              icon: MIconType.settings,
+                              selected: mode == ThemeMode.system,
+                              onTap: () => setThemeMode(ThemeMode.system),
+                            ),
+                            Divider(height: 1, color: context.cSurfaceBorder),
+                            _ThemeTile(
+                              label: 'Светлая',
+                              icon: MIconType.eco,
+                              selected: mode == ThemeMode.light,
+                              onTap: () => setThemeMode(ThemeMode.light),
+                            ),
+                            Divider(height: 1, color: context.cSurfaceBorder),
+                            _ThemeTile(
+                              label: 'Тёмная',
+                              icon: MIconType.moon,
+                              selected: mode == ThemeMode.dark,
+                              onTap: () => setThemeMode(ThemeMode.dark),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  )
+                      .animate()
+                      .fadeIn(duration: Anim.normal)
+                      .slideY(begin: 0.04, end: 0, duration: Anim.normal, curve: Anim.curve),
+
+                  const SizedBox(height: S.l),
+
                   _SectionTitle(title: 'Практика')
                       .animate()
                       .fadeIn(duration: Anim.normal),
@@ -256,22 +325,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           leading: ShaderMask(
                             shaderCallback: (b) =>
                                 C.gradientPrimary.createShader(b),
-                            child: const Icon(Icons.timer_outlined,
+                            child: const MIcon(MIconType.timer,
                                 color: Colors.white),
                           ),
                           title: const Text('Длительность'),
                           subtitle: Text(_duration.label,
-                              style: const TextStyle(color: C.textSec)),
-                          trailing: const Icon(Icons.chevron_right_rounded,
-                              color: C.textDim),
+                              style: TextStyle(color: context.cTextSec)),
+                          trailing: MIcon(MIconType.chevronRight,
+                              color: context.cTextDim),
                           onTap: _pickDuration,
                         ),
-                        const Divider(height: 1, color: C.surfaceBorder),
+                        Divider(height: 1, color: context.cSurfaceBorder),
                         ListTile(
                           leading: ShaderMask(
                             shaderCallback: (b) =>
                                 C.gradientPrimary.createShader(b),
-                            child: const Icon(Icons.record_voice_over_outlined,
+                            child: const MIcon(MIconType.air,
                                 color: Colors.white),
                           ),
                           title: const Text('Голос'),
@@ -281,25 +350,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               PreferredVoice.female => 'Женский',
                               PreferredVoice.any => 'Любой',
                             },
-                            style: const TextStyle(color: C.textSec),
+                            style: TextStyle(color: context.cTextSec),
                           ),
-                          trailing: const Icon(Icons.chevron_right_rounded,
-                              color: C.textDim),
+                          trailing: MIcon(MIconType.chevronRight,
+                              color: context.cTextDim),
                           onTap: _pickVoice,
                         ),
-                        const Divider(height: 1, color: C.surfaceBorder),
+                        Divider(height: 1, color: context.cSurfaceBorder),
                         ListTile(
                           leading: ShaderMask(
                             shaderCallback: (b) =>
                                 C.gradientPrimary.createShader(b),
-                            child: const Icon(Icons.access_time_rounded,
+                            child: const MIcon(MIconType.timer,
                                 color: Colors.white),
                           ),
                           title: const Text('Время'),
                           subtitle: Text(_timeLabel,
-                              style: const TextStyle(color: C.textSec)),
-                          trailing: const Icon(Icons.chevron_right_rounded,
-                              color: C.textDim),
+                              style: TextStyle(color: context.cTextSec)),
+                          trailing: MIcon(MIconType.chevronRight,
+                              color: context.cTextDim),
                           onTap: _pickTime,
                         ),
                       ],
@@ -328,16 +397,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           value: _notifPractice,
                           activeThumbColor: C.primary,
                           activeTrackColor: C.primary.withValues(alpha: 0.45),
-                          inactiveTrackColor: C.surfaceLight,
+                          inactiveTrackColor: context.cSurfaceLight,
                           onChanged: (v) => _saveNotifPractice(v),
                         ),
-                        const Divider(height: 1, color: C.surfaceBorder),
+                        Divider(height: 1, color: context.cSurfaceBorder),
                         SwitchListTile(
                           title: const Text('Сообщения партнёра'),
                           value: _notifPartner,
                           activeThumbColor: C.primary,
                           activeTrackColor: C.primary.withValues(alpha: 0.45),
-                          inactiveTrackColor: C.surfaceLight,
+                          inactiveTrackColor: context.cSurfaceLight,
                           onChanged: (v) => _saveNotifPartner(v),
                         ),
                       ],
@@ -366,40 +435,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           leading: ShaderMask(
                             shaderCallback: (b) =>
                                 C.gradientPrimary.createShader(b),
-                            child: const Icon(Icons.info_outline_rounded,
+                            child: const MIcon(MIconType.insights,
                                 color: Colors.white),
                           ),
                           title: const Text('Версия'),
-                          subtitle: const Text('1.0.0',
-                              style: TextStyle(color: C.textSec)),
+                          subtitle: Text('1.0.0',
+                              style: TextStyle(color: context.cTextSec)),
                         ),
-                        const Divider(height: 1, color: C.surfaceBorder),
+                        Divider(height: 1, color: context.cSurfaceBorder),
                         ListTile(
                           leading: ShaderMask(
                             shaderCallback: (b) =>
                                 C.gradientPrimary.createShader(b),
-                            child: const Icon(Icons.shield_outlined,
+                            child: const MIcon(MIconType.lock,
                                 color: Colors.white),
                           ),
                           title: const Text('Конфиденциальность'),
-                          trailing: const Icon(Icons.open_in_new_rounded,
-                              size: 20, color: C.textDim),
+                          trailing: MIcon(MIconType.arrowForward,
+                              size: 20, color: context.cTextDim),
                           onTap: () =>
-                              _openUrl('https://meditator.app/privacy'),
+                              _openUrl('https://mymeditator.ru/privacy'),
                         ),
-                        const Divider(height: 1, color: C.surfaceBorder),
+                        Divider(height: 1, color: context.cSurfaceBorder),
                         ListTile(
                           leading: ShaderMask(
                             shaderCallback: (b) =>
                                 C.gradientPrimary.createShader(b),
-                            child: const Icon(Icons.description_outlined,
+                            child: const MIcon(MIconType.book,
                                 color: Colors.white),
                           ),
                           title: const Text('Условия'),
-                          trailing: const Icon(Icons.open_in_new_rounded,
-                              size: 20, color: C.textDim),
+                          trailing: MIcon(MIconType.arrowForward,
+                              size: 20, color: context.cTextDim),
                           onTap: () =>
-                              _openUrl('https://meditator.app/terms'),
+                              _openUrl('https://mymeditator.ru/terms'),
                         ),
                       ],
                     ),
@@ -424,7 +493,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     semanticLabel: 'Удалить аккаунт',
                     opacity: 0.06,
                     child: ListTile(
-                      leading: Icon(Icons.delete_outline,
+                      leading: MIcon(MIconType.delete,
                           color: C.error.withValues(alpha: 0.8)),
                       title: Text('Удалить аккаунт',
                           style: TextStyle(color: C.error)),
@@ -464,10 +533,39 @@ class _SectionTitle extends StatelessWidget {
       child: Text(
         title,
         style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              color: C.textSec,
+              color: context.cTextSec,
               fontWeight: FontWeight.w600,
             ),
       ),
+    );
+  }
+}
+
+class _ThemeTile extends StatelessWidget {
+  const _ThemeTile({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final MIconType icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: ShaderMask(
+        shaderCallback: (b) => C.gradientPrimary.createShader(b),
+        child: MIcon(icon, color: Colors.white),
+      ),
+      title: Text(label),
+      trailing: selected
+          ? const MIcon(MIconType.check, color: C.accent)
+          : null,
+      onTap: onTap,
     );
   }
 }

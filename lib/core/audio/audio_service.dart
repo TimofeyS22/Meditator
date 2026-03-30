@@ -1,6 +1,8 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:just_audio/just_audio.dart';
+import 'package:path_provider/path_provider.dart';
 
 class AudioService {
   AudioService._();
@@ -9,6 +11,7 @@ class AudioService {
 
   final AudioPlayer _main = AudioPlayer();
   final AudioPlayer _ambient = AudioPlayer();
+  File? _tempAudioFile;
 
   Stream<PlayerState> get playerStateStream => _main.playerStateStream;
 
@@ -28,10 +31,18 @@ class AudioService {
     await _main.play();
   }
 
+  Future<void> playFile(String path) async {
+    await _main.setFilePath(path);
+    await _main.play();
+  }
+
   Future<void> playBytes(Uint8List bytes) async {
-    await _main.setAudioSource(
-      AudioSource.uri(Uri.dataFromBytes(bytes, mimeType: 'audio/mpeg')),
-    );
+    final dir = await getTemporaryDirectory();
+    final file = File('${dir.path}/meditator_audio_${DateTime.now().millisecondsSinceEpoch}.mp3');
+    await file.writeAsBytes(bytes, flush: true);
+    _tempAudioFile?.delete().catchError((_) {});
+    _tempAudioFile = file;
+    await _main.setFilePath(file.path);
     await _main.play();
   }
 
@@ -61,5 +72,6 @@ class AudioService {
   Future<void> dispose() async {
     await _main.dispose();
     await _ambient.dispose();
+    _tempAudioFile?.delete().catchError((_) {});
   }
 }

@@ -262,6 +262,10 @@ enum MIconType {
   delete,
   meditation,
   star,
+  search,
+  send,
+  mic,
+  moon,
 }
 
 class MIcon extends StatelessWidget {
@@ -397,6 +401,18 @@ class _MIconPainter extends CustomPainter {
       case MIconType.star:
         _paintStar(canvas);
         break;
+      case MIconType.search:
+        _paintSearch(canvas);
+        break;
+      case MIconType.send:
+        _paintSend(canvas);
+        break;
+      case MIconType.mic:
+        _paintMic(canvas);
+        break;
+      case MIconType.moon:
+        _paintMoon(canvas);
+        break;
     }
     canvas.restore();
   }
@@ -508,7 +524,7 @@ class _MIconPainter extends CustomPainter {
       canvas.translate(c.dx, c.dy);
       canvas.rotate(-pi / 2 + i * 2 * pi / 5);
       canvas.translate(0, -3.1);
-      canvas.drawOval(const Rect.fromCenter(center: Offset.zero, width: 2.6, height: 5.4), p);
+      canvas.drawOval(Rect.fromCenter(center: Offset.zero, width: 2.6, height: 5.4), p);
       canvas.restore();
     }
     canvas.drawCircle(c, 1.6, p);
@@ -837,6 +853,59 @@ class _MIconPainter extends CustomPainter {
     }
     path.close();
     canvas.drawPath(path, paint);
+  }
+
+  void _paintSearch(Canvas canvas) {
+    final p = _stroke();
+    const c = Offset(10.5, 10.5);
+    canvas.drawCircle(c, 5.8, p);
+    canvas.drawLine(const Offset(14.8, 14.8), const Offset(19, 19), p);
+  }
+
+  void _paintSend(Canvas canvas) {
+    final p = _stroke();
+    final path = Path()
+      ..moveTo(5, 19)
+      ..lineTo(19.5, 12)
+      ..lineTo(5, 5)
+      ..lineTo(7.5, 12)
+      ..close();
+    canvas.drawPath(path, p);
+    canvas.drawLine(const Offset(7.5, 12), const Offset(19.5, 12), p);
+  }
+
+  void _paintMic(Canvas canvas) {
+    final p = _stroke();
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        const Rect.fromLTWH(9, 4.5, 6, 10),
+        const Radius.circular(3),
+      ),
+      p,
+    );
+    canvas.drawArc(
+      Rect.fromCircle(center: const Offset(12, 13), radius: 5.5),
+      0,
+      pi,
+      false,
+      p,
+    );
+    canvas.drawLine(const Offset(12, 18.5), const Offset(12, 20.5), p);
+    canvas.drawLine(const Offset(9, 20.5), const Offset(15, 20.5), p);
+  }
+
+  void _paintMoon(Canvas canvas) {
+    final p = _stroke();
+    final path = Path();
+    path.addArc(Rect.fromCircle(center: const Offset(12, 12), radius: 7), -0.5, 2 * pi - 1.0);
+    canvas.drawPath(path, p);
+    final cutout = Path()
+      ..addOval(Rect.fromCircle(center: const Offset(15, 9), radius: 5.5));
+    final moon = Path.combine(PathOperation.difference,
+      Path()..addOval(Rect.fromCircle(center: const Offset(12, 12), radius: 7)),
+      cutout,
+    );
+    canvas.drawPath(moon, Paint()..color = color..style = PaintingStyle.fill);
   }
 
   @override

@@ -1,18 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:meditator/app/theme.dart';
+import 'package:meditator/shared/utils/accessibility.dart';
+import 'package:meditator/shared/widgets/sticker_icon.dart';
 
 class EmotionChip extends StatefulWidget {
   const EmotionChip({
     super.key,
-    required this.emoji,
+    required this.iconData,
+    required this.iconColor,
     required this.label,
     required this.color,
     required this.isSelected,
     this.onTap,
   });
 
-  final String emoji;
+  final IconData iconData;
+  final Color iconColor;
   final String label;
   final Color color;
   final bool isSelected;
@@ -38,7 +42,7 @@ class _EmotionChipState extends State<EmotionChip>
     _scaleCurve = CurvedAnimation(
       parent: _scaleCtrl,
       curve: Curves.easeIn,
-      reverseCurve: Curves.easeOutBack,
+      reverseCurve: Anim.curveGentle,
     );
   }
 
@@ -56,12 +60,13 @@ class _EmotionChipState extends State<EmotionChip>
 
   @override
   Widget build(BuildContext context) {
-    final semanticLabel = '${widget.emoji} ${widget.label}';
+    final semanticLabel = widget.label;
     final enabled = widget.onTap != null;
+    final reduceMotion = AccessibilityUtils.reduceMotion(context);
     return ListenableBuilder(
       listenable: _scaleCurve,
       builder: (context, child) => Transform.scale(
-        scale: 1.0 - 0.05 * _scaleCurve.value,
+        scale: reduceMotion ? 1.0 : 1.0 - 0.05 * _scaleCurve.value,
         child: child,
       ),
       child: Semantics(
@@ -83,7 +88,7 @@ class _EmotionChipState extends State<EmotionChip>
               decoration: BoxDecoration(
                 color: widget.isSelected
                     ? widget.color.withValues(alpha: 0.15)
-                    : C.surfaceLight,
+                    : context.cSurfaceLight,
                 borderRadius: BorderRadius.circular(R.xl),
                 border: Border.all(
                   color: widget.isSelected
@@ -92,16 +97,21 @@ class _EmotionChipState extends State<EmotionChip>
                   width: 1.5,
                 ),
               ),
+              constraints: const BoxConstraints(minHeight: S.minTapTarget),
               padding: const EdgeInsets.symmetric(horizontal: S.m, vertical: S.s),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(widget.emoji, style: const TextStyle(fontSize: 20)),
+                  StickerIcon(
+                    icon: widget.iconData,
+                    color: widget.iconColor,
+                    size: 20,
+                    showBackground: false,
+                  ),
                   const SizedBox(width: S.s),
                   Text(
                     widget.label,
                     style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                          color: C.text,
                           fontWeight: FontWeight.w500,
                         ),
                   ),

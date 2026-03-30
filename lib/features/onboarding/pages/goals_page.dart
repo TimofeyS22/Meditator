@@ -5,6 +5,7 @@ import 'package:meditator/app/theme.dart';
 import 'package:meditator/shared/models/user_profile.dart';
 import 'package:meditator/shared/widgets/glass_card.dart';
 import 'package:meditator/shared/widgets/onboarding_illustration.dart';
+import 'package:meditator/shared/widgets/custom_icons.dart';
 
 class GoalsPage extends StatelessWidget {
   const GoalsPage({
@@ -46,7 +47,7 @@ class GoalsPage extends StatelessWidget {
           const SizedBox(height: S.s),
           Text(
             'Выбери цели — мы подберём практики под тебя.',
-            style: t.bodyMedium?.copyWith(color: C.textDim),
+            style: t.bodyMedium?.copyWith(color: context.cTextDim),
           ).animate().fadeIn(delay: 80.ms, duration: 400.ms),
           const SizedBox(height: S.l),
           for (var i = 0; i < MeditationGoal.values.length; i++)
@@ -125,13 +126,12 @@ class _GoalItem extends StatelessWidget {
                   const EdgeInsets.symmetric(horizontal: S.m, vertical: S.m),
               child: Row(
                 children: [
-                  Text(goal.emoji, style: const TextStyle(fontSize: 26)),
+                  Icon(goal.iconData, size: 26, color: C.primary),
                   const SizedBox(width: S.m),
                   Expanded(
                     child: Text(
                       goal.label,
                       style: t.titleMedium?.copyWith(
-                        color: C.text,
                         fontWeight:
                             isSelected ? FontWeight.w600 : FontWeight.w400,
                       ),
@@ -140,8 +140,8 @@ class _GoalItem extends StatelessWidget {
                   AnimatedOpacity(
                     duration: Anim.fast,
                     opacity: isSelected ? 1.0 : 0.0,
-                    child: const Icon(Icons.check_circle_rounded,
-                        color: C.accent, size: 22),
+                    child: const MIcon(MIconType.check,
+                        size: 22, color: C.accent),
                   ),
                 ],
               ),

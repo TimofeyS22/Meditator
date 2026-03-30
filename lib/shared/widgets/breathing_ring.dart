@@ -386,7 +386,6 @@ class _BreathingRingState extends State<BreathingRing>
                 phase.label,
                 key: ValueKey(phase.label),
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: C.text,
                       letterSpacing: 1.2,
                     ),
                 textAlign: TextAlign.center,
@@ -396,7 +395,6 @@ class _BreathingRingState extends State<BreathingRing>
             Text(
               '${_controller.secondsLeft} сек',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: C.textSec,
                     fontWeight: FontWeight.w600,
                   ),
             ),

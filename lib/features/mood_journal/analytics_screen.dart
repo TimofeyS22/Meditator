@@ -5,6 +5,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
 import 'package:meditator/app/theme.dart';
 import 'package:meditator/core/api/backend.dart';
+import 'package:meditator/core/auth/auth_service.dart';
 import 'package:meditator/core/database/db.dart';
 import 'package:meditator/shared/models/mood_entry.dart';
 import 'package:meditator/shared/widgets/animated_number.dart';
@@ -12,17 +13,18 @@ import 'package:meditator/shared/widgets/glass_card.dart';
 import 'package:meditator/shared/widgets/gradient_bg.dart';
 import 'package:meditator/shared/widgets/aura_avatar.dart';
 import 'package:meditator/shared/widgets/progress_arc.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:meditator/shared/widgets/sticker_icon.dart';
+import 'package:meditator/shared/widgets/custom_icons.dart';
 
 MoodEntry _entryFromDbRow(Map<String, dynamic> row) {
   return MoodEntry.fromJson({
     'id': row['id'],
     'userId': row['user_id'] ?? row['userId'],
-    'primary': row['primary'],
-    'secondary': row['secondary'],
+    'primary': row['primary_emotion'] ?? row['primary'],
+    'secondary': row['secondary_emotions'] ?? row['secondary'],
     'intensity': row['intensity'],
     'note': row['note'],
-    'aiInsight': row['ai_insight'] ?? row['insight'] ?? row['aiInsight'],
+    'aiInsight': row['ai_insight'] ?? row['aiInsight'],
     'createdAt': row['created_at'] ?? row['createdAt'],
   });
 }
@@ -49,7 +51,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   }
 
   Future<void> _load() async {
-    final uid = Supabase.instance.client.auth.currentUser?.id;
+    final uid = AuthService.instance.userId;
     if (uid == null) {
       setState(() {
         _loading = false;
@@ -67,9 +69,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
       final maps = filtered
           .map((e) => {
-                'primary': e.primary.name,
+                'primary_emotion': e.primary.name,
                 'intensity': e.intensity,
-                'secondary': e.secondary.map((x) => x.name).toList(),
                 'note': e.note,
                 'created_at': e.createdAt.toIso8601String(),
               })
@@ -186,8 +187,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                       child: Row(
                         children: [
                           IconButton(
-                            icon: const Icon(Icons.arrow_back_rounded,
-                                color: C.text),
+                            icon: MIcon(MIconType.arrowBack,
+                                size: 24, color: context.cText),
                             tooltip: 'Назад',
                             onPressed: () => context.pop(),
                           ),
@@ -214,7 +215,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                                 style: Theme.of(context)
                                     .textTheme
                                     .titleSmall
-                                    ?.copyWith(color: C.textSec))
+                                    ?.copyWith(color: context.cTextSec))
                             .animate()
                             .fadeIn(),
                         const SizedBox(height: S.s),
@@ -227,7 +228,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                               style: Theme.of(context)
                                   .textTheme
                                   .bodyMedium
-                                  ?.copyWith(color: C.textDim),
+                                  ?.copyWith(color: context.cTextDim),
                             ),
                           )
                         else
@@ -260,10 +261,12 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                                       Expanded(
                                         child: Column(
                                           children: [
-                                            Text(e.key.emoji,
-                                                textAlign: TextAlign.center,
-                                                style: const TextStyle(
-                                                    fontSize: 16)),
+                                            StickerIcon(
+                                              icon: e.key.iconData,
+                                              color: e.key.color,
+                                              size: 16,
+                                              showBackground: false,
+                                            ),
                                             const SizedBox(height: 4),
                                             Text(
                                               e.key.label,
@@ -274,7 +277,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                                                   .textTheme
                                                   .bodySmall
                                                   ?.copyWith(
-                                                    color: C.textDim,
                                                     fontSize: 11,
                                                   ),
                                             ),
@@ -294,7 +296,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                                   style: Theme.of(context)
                                       .textTheme
                                       .titleSmall
-                                      ?.copyWith(color: C.textSec))
+                                      ?.copyWith(color: context.cTextSec))
                               .animate()
                               .fadeIn(),
                           const SizedBox(height: S.s),
@@ -310,9 +312,12 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                                             i < top.length - 1 ? S.s : 0),
                                     child: Row(
                                       children: [
-                                        Text(top[i].key.emoji,
-                                            style: const TextStyle(
-                                                fontSize: 16)),
+                                        StickerIcon(
+                                          icon: top[i].key.iconData,
+                                          color: top[i].key.color,
+                                          size: 16,
+                                          showBackground: false,
+                                        ),
                                         const SizedBox(width: S.s),
                                         SizedBox(
                                           width: 70,
@@ -322,7 +327,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                                             style: Theme.of(context)
                                                 .textTheme
                                                 .bodySmall
-                                                ?.copyWith(color: C.textSec),
+                                                ?.copyWith(color: context.cTextSec),
                                           ),
                                         ),
                                         const SizedBox(width: S.s),
@@ -370,9 +375,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                                             textAlign: TextAlign.right,
                                             style: Theme.of(context)
                                                 .textTheme
-                                                .bodySmall
-                                                ?.copyWith(
-                                                    color: C.textDim),
+                                                .bodySmall,
                                           ),
                                         ),
                                       ],
@@ -392,7 +395,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                                 style: Theme.of(context)
                                     .textTheme
                                     .titleSmall
-                                    ?.copyWith(color: C.textSec))
+                                    ?.copyWith(color: context.cTextSec))
                             .animate()
                             .fadeIn(),
                         const SizedBox(height: S.s),
@@ -410,7 +413,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                                       begin: const Offset(0.8, 0.8),
                                       end: const Offset(1, 1),
                                       delay: (60 + i * 40).ms,
-                                      curve: Curves.easeOutBack,
+                                      curve: Anim.curveGentle,
                                     ),
                             ],
                           ),
@@ -422,7 +425,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                                 style: Theme.of(context)
                                     .textTheme
                                     .titleSmall
-                                    ?.copyWith(color: C.textSec))
+                                    ?.copyWith(color: context.cTextSec))
                             .animate()
                             .fadeIn(),
                         const SizedBox(height: S.s),
@@ -444,15 +447,13 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                                         .textTheme
                                         .headlineSmall
                                         ?.copyWith(
-                                          color: C.text,
                                           fontWeight: FontWeight.w700,
                                         ),
                                   ),
                                   Text('позитивных',
                                       style: Theme.of(context)
                                           .textTheme
-                                          .bodySmall
-                                          ?.copyWith(color: C.textDim)),
+                                          .bodySmall),
                                 ],
                               ),
                             ),
@@ -465,7 +466,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                                 style: Theme.of(context)
                                     .textTheme
                                     .titleSmall
-                                    ?.copyWith(color: C.textSec))
+                                    ?.copyWith(color: context.cTextSec))
                             .animate()
                             .fadeIn(),
                         const SizedBox(height: S.s),
@@ -488,7 +489,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                                     style: Theme.of(context)
                                         .textTheme
                                         .bodyMedium
-                                        ?.copyWith(color: C.textDim),
+                                        ?.copyWith(color: context.cTextDim),
                                   ),
                                 ),
                               ],
@@ -525,7 +526,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                                                   .textTheme
                                                   .bodyMedium
                                                   ?.copyWith(
-                                                    color: C.textSec,
                                                     height: 1.45,
                                                   ),
                                             ),
@@ -557,7 +557,7 @@ class _WeekDot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c = emotion?.color ?? C.surfaceLight;
+    final c = emotion?.color ?? context.cSurfaceLight;
     final hasEmotion = emotion != null;
     return Semantics(
       label: hasEmotion ? 'Эмоция ${emotion!.label}' : 'Нет записи',
@@ -576,11 +576,11 @@ class _WeekDot extends StatelessWidget {
                   ],
                 )
               : null,
-          color: hasEmotion ? null : C.surface,
+          color: hasEmotion ? null : context.cSurface,
           border: Border.all(
             color: hasEmotion
                 ? c.withValues(alpha: 0.65)
-                : C.surfaceLight.withValues(alpha: 0.4),
+                : context.cSurfaceLight.withValues(alpha: 0.4),
             width: hasEmotion ? 2 : 1,
           ),
           boxShadow: hasEmotion
@@ -593,10 +593,14 @@ class _WeekDot extends StatelessWidget {
               : null,
         ),
         alignment: Alignment.center,
-        child: Text(
-          emotion?.emoji ?? '?',
-          style: const TextStyle(fontSize: 16),
-        ),
+        child: emotion != null
+            ? StickerIcon(
+                icon: emotion!.iconData,
+                color: emotion!.color,
+                size: 20,
+                showBackground: false,
+              )
+            : Icon(Icons.remove_rounded, size: 16, color: context.cTextDim),
       ),
     );
   }

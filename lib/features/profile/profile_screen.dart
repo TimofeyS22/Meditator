@@ -9,8 +9,7 @@ import 'package:meditator/shared/widgets/animated_number.dart';
 import 'package:meditator/shared/widgets/custom_icons.dart';
 import 'package:meditator/shared/widgets/glass_card.dart';
 import 'package:meditator/shared/widgets/gradient_bg.dart';
-import 'package:meditator/shared/widgets/morphing_blob.dart';
-import 'package:meditator/shared/widgets/progress_arc.dart';
+import 'package:meditator/shared/widgets/skeleton_placeholders.dart';
 import 'package:meditator/shared/widgets/streak_celebration.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -30,6 +29,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   String? get _uid => AuthService.instance.userId;
 
+  static const _kCelebratedStreak = 'celebrated_streak';
+
   @override
   void initState() {
     super.initState();
@@ -43,6 +44,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     var plants = 0;
     final prefs = await SharedPreferences.getInstance();
     final premiumPref = prefs.getBool('isPremium') ?? false;
+    _celebratedStreak = prefs.getInt(_kCelebratedStreak) ?? 0;
 
     try {
       if (uid != null && uid.isNotEmpty) {
@@ -72,15 +74,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _plantCount = plants;
       _loading = false;
     });
-    final streak = prof?.currentStreak ?? 0;
+    final streak = prof.currentStreak;
     final milestones = [3, 7, 14, 30, 60, 100, 365];
     if (milestones.contains(streak) && streak > _celebratedStreak) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (mounted) {
           setState(() {
             _showStreakCelebration = true;
             _celebratedStreak = streak;
           });
+          final p = await SharedPreferences.getInstance();
+          await p.setInt(_kCelebratedStreak, streak);
         }
       });
     }
@@ -109,6 +113,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _signOut() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('onboarding_done');
     await AuthService.instance.signOut();
     if (!mounted) return;
     context.go('/onboarding');
@@ -120,12 +126,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
       return GradientBg(
         showStars: true,
         intensity: 0.2,
-        child: const Center(child: CircularProgressIndicator(color: C.primary)),
+        child: const SafeArea(child: ProfileSkeleton()),
       );
     }
 
     final profile = _profile!;
-    final theme = Theme.of(context);
+    final t = Theme.of(context).textTheme;
     final displayName =
         profile.displayName.trim().isNotEmpty ? profile.displayName : 'Медитатор';
     final level = _levelFor(profile.totalSessions);
@@ -143,314 +149,255 @@ class _ProfileScreenState extends State<ProfileScreen> {
         GradientBg(
           showStars: true,
           intensity: 0.2,
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(S.m, S.m, S.m, S.xxl),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-            Row(
-              children: [
-                SizedBox(
-                  width: 80,
-                  height: 80,
-                  child: Stack(
-                    alignment: Alignment.center,
+          child: RefreshIndicator(
+            onRefresh: _load,
+            color: C.accent,
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(S.l, S.l, S.l, 120),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Compact header
+                  Row(
                     children: [
-                      MorphingBlob(size: 80, color: C.primary),
-                      ClipOval(
-                        child: SizedBox(
-                          width: 56,
-                          height: 56,
-                          child: profile.avatarUrl != null &&
-                                  profile.avatarUrl!.isNotEmpty
+                      Container(
+                        width: 56,
+                        height: 56,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: C.gradientPrimary,
+                        ),
+                        child: ClipOval(
+                          child: profile.avatarUrl != null && profile.avatarUrl!.isNotEmpty
                               ? Image.network(
                                   profile.avatarUrl!,
                                   width: 56,
                                   height: 56,
                                   fit: BoxFit.cover,
                                   errorBuilder: (_, __, ___) => _InitialsText(
-                                    initials: _initials(
-                                        displayName == 'Медитатор'
-                                            ? null
-                                            : displayName),
+                                    initials: _initials(displayName == 'Медитатор' ? null : displayName),
                                   ),
                                 )
                               : _InitialsText(
-                                  initials: _initials(
-                                      displayName == 'Медитатор'
-                                          ? null
-                                          : displayName),
+                                  initials: _initials(displayName == 'Медитатор' ? null : displayName),
                                 ),
                         ),
                       ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: S.m),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        displayName,
-                        style: theme.textTheme.displayMedium,
+                      const SizedBox(width: S.m),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(displayName, style: t.headlineLarge),
+                            if (profile.email.isNotEmpty) ...[
+                              const SizedBox(height: 2),
+                              Text(profile.email, style: t.bodySmall?.copyWith(color: context.cTextSec)),
+                            ],
+                          ],
+                        ),
                       ),
-                      if (profile.email.isNotEmpty) ...[
-                        const SizedBox(height: S.xs),
-                        Text(
-                          profile.email,
-                          style: theme.textTheme.bodySmall
-                              ?.copyWith(color: C.textSec),
-                        ),
-                      ],
+                      IconButton(
+                        onPressed: () => context.push('/settings'),
+                        icon: MIcon(MIconType.settings, size: 22, color: context.cTextSec),
+                        tooltip: 'Настройки',
+                      ),
                     ],
-                  ),
-                ),
-              ],
-            )
-                .animate()
-                .fadeIn(duration: Anim.normal)
-                .slideX(begin: 0.04, end: 0, duration: Anim.normal),
+                  )
+                      .animate()
+                      .fadeIn(duration: Anim.normal)
+                      .slideY(begin: -0.04, end: 0, duration: Anim.normal),
 
-            const SizedBox(height: S.xl),
+                  const SizedBox(height: S.section),
 
-            Text('Статистика',
-                style: theme.textTheme.headlineMedium),
-            const SizedBox(height: S.m),
-
-            Row(
-              children: [
-                Expanded(
-                  child: GlassCard(
-                    showGlow: streakFire,
-                    glowColor: C.gold,
-                    semanticLabel: 'Всего сессий ${profile.totalSessions}',
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                  // Stats — horizontal scroll
+                  SizedBox(
+                    height: 88,
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      clipBehavior: Clip.none,
                       children: [
-                        ShaderMask(
-                          shaderCallback: (b) =>
-                              C.gradientPrimary.createShader(b),
-                          child: const MIcon(MIconType.meditation,
-                              size: 24, color: Colors.white),
-                        ),
-                        const SizedBox(height: S.s),
-                        AnimatedNumber(
+                        _StatTile(
+                          icon: MIconType.meditation,
                           value: profile.totalSessions,
-                          style: theme.textTheme.headlineLarge
-                              ?.copyWith(fontWeight: FontWeight.w700),
+                          label: 'Сессии',
+                          accentColor: C.primary,
                         ),
-                        Text('Сессии',
-                            style: theme.textTheme.bodySmall
-                                ?.copyWith(color: C.textSec)),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(width: S.s),
-                Expanded(
-                  child: GlassCard(
-                    semanticLabel: 'Всего минут ${profile.totalMinutes}',
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        ShaderMask(
-                          shaderCallback: (b) =>
-                              C.gradientPrimary.createShader(b),
-                          child: const MIcon(MIconType.timer,
-                              size: 24, color: Colors.white),
-                        ),
-                        const SizedBox(height: S.s),
-                        AnimatedNumber(
+                        const SizedBox(width: S.s),
+                        _StatTile(
+                          icon: MIconType.timer,
                           value: profile.totalMinutes,
-                          style: theme.textTheme.headlineLarge
-                              ?.copyWith(fontWeight: FontWeight.w700),
+                          label: 'Минуты',
+                          accentColor: C.accent,
                         ),
-                        Text('Минуты',
-                            style: theme.textTheme.bodySmall
-                                ?.copyWith(color: C.textSec)),
+                        const SizedBox(width: S.s),
+                        _StatTile(
+                          icon: streakFire ? MIconType.fire : MIconType.bolt,
+                          value: profile.currentStreak,
+                          label: 'Серия',
+                          accentColor: streakFire ? C.gold : C.primary,
+                          showGlow: streakFire,
+                        ),
+                        const SizedBox(width: S.s),
+                        _StatTile(
+                          icon: MIconType.eco,
+                          value: _plantCount,
+                          label: 'Растения',
+                          accentColor: C.ok,
+                        ),
                       ],
                     ),
-                  ),
-                ),
-                const SizedBox(width: S.s),
-                Expanded(
-                  child: GlassCard(
-                    showGlow: streakFire,
-                    glowColor: C.gold,
-                    semanticLabel: 'Текущая серия ${profile.currentStreak} дней',
+                  ).animate().fadeIn(delay: 100.ms, duration: Anim.normal),
+
+                  const SizedBox(height: S.section),
+
+                  // Level — inline progress bar
+                  GlassCard(
+                    variant: GlassCardVariant.surface,
+                    semanticLabel: 'Уровень ${level.title}, прогресс ${(level.progress * 100).round()}%',
+                    padding: const EdgeInsets.all(S.m),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        ShaderMask(
-                          shaderCallback: (b) => (streakFire
-                                  ? C.gradientGold
-                                  : C.gradientPrimary)
-                              .createShader(b),
-                          child: streakFire
-                              ? const MIcon(MIconType.fire,
-                                  size: 24, color: Colors.white)
-                              : const MIcon(MIconType.bolt,
-                                  size: 24, color: Colors.white),
+                        Row(
+                          children: [
+                            Text(level.title, style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                            const Spacer(),
+                            Text(
+                              '${profile.totalSessions} сессий',
+                              style: t.bodySmall?.copyWith(color: context.cTextSec),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: S.m),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(R.full),
+                          child: LinearProgressIndicator(
+                            value: level.progress.clamp(0.0, 1.0),
+                            minHeight: 6,
+                            backgroundColor: context.cSurfaceLight,
+                            valueColor: const AlwaysStoppedAnimation<Color>(C.primary),
+                          ),
                         ),
                         const SizedBox(height: S.s),
-                        AnimatedNumber(
-                          value: profile.currentStreak,
-                          style: theme.textTheme.headlineLarge?.copyWith(
-                            fontWeight: FontWeight.w700,
-                            color: streakFire ? C.gold : null,
-                          ),
-                          suffix: streakFire ? ' 🔥' : null,
-                        ),
-                        Text('Серия',
-                            style: theme.textTheme.bodySmall
-                                ?.copyWith(color: C.textSec)),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ).animate().fadeIn(delay: 80.ms, duration: Anim.normal),
-
-            const SizedBox(height: S.xl),
-
-            Text('Уровень', style: theme.textTheme.headlineMedium),
-            const SizedBox(height: S.m),
-            GlassCard(
-              semanticLabel:
-                  'Уровень ${level.title}, прогресс ${(level.progress * 100).round()}%',
-              child: Row(
-                children: [
-                  ProgressArc(
-                    progress: level.progress.clamp(0.0, 1.0),
-                    size: 92,
-                    strokeWidth: 6,
-                    child: Text(
-                      '${profile.totalSessions}',
-                      style: theme.textTheme.titleMedium
-                          ?.copyWith(fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                  const SizedBox(width: S.m),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(level.title,
-                            style: theme.textTheme.titleMedium
-                                ?.copyWith(fontWeight: FontWeight.w700)),
-                        const SizedBox(height: S.xs),
                         Text(
-                          'Aura: чем стабильнее практика, тем глубже калибровка медитаций под тебя.',
-                          style: theme.textTheme.bodySmall
-                              ?.copyWith(color: C.textSec, height: 1.4),
+                          'Чем стабильнее практика, тем глубже калибровка.',
+                          style: t.bodySmall?.copyWith(color: context.cTextDim, height: 1.4),
+                        ),
+                      ],
+                    ),
+                  ).animate().fadeIn(delay: 150.ms, duration: Anim.normal),
+
+                  const SizedBox(height: S.section),
+
+                  // Menu
+                  GlassCard(
+                    variant: GlassCardVariant.surface,
+                    padding: EdgeInsets.zero,
+                    child: Column(
+                      children: [
+                        _MenuRow(
+                          icon: MIconType.eco,
+                          title: 'Мой сад',
+                          subtitle: '$_plantCount растений',
+                          onTap: () => context.push('/garden'),
+                        ),
+                        Divider(height: 1, color: context.cSurfaceBorder),
+                        _MenuRow(
+                          icon: MIconType.heart,
+                          title: 'Мой партнёр',
+                          onTap: () => context.push('/pair'),
+                        ),
+                        Divider(height: 1, color: context.cSurfaceBorder),
+                        _MenuRow(
+                          icon: MIconType.premium,
+                          title: 'Подписка',
+                          subtitle: profile.isPremium ? 'Premium' : null,
+                          onTap: () async {
+                            await context.push('/paywall');
+                            await _load();
+                          },
+                        ),
+                        Divider(height: 1, color: context.cSurfaceBorder),
+                        _MenuRow(
+                          icon: MIconType.arrowForward,
+                          title: 'Загрузки',
+                          onTap: () => context.push('/downloads'),
+                        ),
+                      ],
+                    ),
+                  )
+                      .animate()
+                      .fadeIn(delay: 200.ms, duration: Anim.normal)
+                      .slideY(begin: 0.02, end: 0, duration: Anim.normal),
+
+                  const SizedBox(height: S.section),
+
+                  // Achievements
+                  Text('Достижения', style: t.headlineMedium),
+                  const SizedBox(height: S.m),
+                  Wrap(
+                    spacing: S.s,
+                    runSpacing: S.s,
+                    children: achievements.map((a) {
+                      return Container(
+                        padding: const EdgeInsets.symmetric(horizontal: S.m, vertical: S.s),
+                        constraints: const BoxConstraints(minHeight: S.minTapTarget),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(R.full),
+                          color: a.done
+                              ? context.cSurfaceLight.withValues(alpha: 0.5)
+                              : context.cSurface.withValues(alpha: 0.4),
+                          border: Border.all(
+                            color: a.done
+                                ? C.accent.withValues(alpha: 0.3)
+                                : context.cSurfaceBorder,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (a.done)
+                              ShaderMask(
+                                shaderCallback: (b) => C.gradientPrimary.createShader(b),
+                                child: const MIcon(MIconType.check, size: 16, color: Colors.white),
+                              )
+                            else
+                              MIcon(MIconType.lock, size: 16, color: context.cTextDim),
+                            const SizedBox(width: S.s),
+                            Text(
+                              a.title,
+                              style: t.bodySmall?.copyWith(
+                                color: a.done ? context.cText : context.cTextDim,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  ).animate().fadeIn(delay: 250.ms, duration: Anim.normal),
+
+                  const SizedBox(height: S.xxl),
+
+                  // Sign out
+                  GlassCard(
+                    variant: GlassCardVariant.surface,
+                    onTap: _signOut,
+                    semanticLabel: 'Выйти из аккаунта',
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        MIcon(MIconType.logout, size: 20, color: C.error.withValues(alpha: 0.8)),
+                        const SizedBox(width: S.s),
+                        Text(
+                          'Выйти',
+                          style: t.titleMedium?.copyWith(color: C.error, fontWeight: FontWeight.w600),
                         ),
                       ],
                     ),
                   ),
                 ],
               ),
-            ).animate().fadeIn(delay: 120.ms, duration: Anim.normal),
-
-            const SizedBox(height: S.xl),
-
-            Text('Меню', style: theme.textTheme.headlineMedium),
-            const SizedBox(height: S.s),
-            GlassCard(
-              padding: EdgeInsets.zero,
-              child: Column(
-                children: [
-                  _MenuRow(
-                    icon: const MIcon(MIconType.settings,
-                        size: 22, color: Colors.white),
-                    title: 'Настройки',
-                    onTap: () => context.push('/settings'),
-                    semanticLabel: 'Открыть настройки',
-                  ),
-                  const Divider(height: 1, color: C.surfaceBorder),
-                  _MenuRow(
-                    icon: const MIcon(MIconType.premium,
-                        size: 22, color: Colors.white),
-                    title: 'Подписка',
-                    onTap: () async {
-                      await context.push('/paywall');
-                      await _load();
-                    },
-                    semanticLabel: 'Открыть подписку',
-                  ),
-                  const Divider(height: 1, color: C.surfaceBorder),
-                  _MenuRow(
-                    icon: const MIcon(MIconType.heart,
-                        size: 22, color: Colors.white),
-                    title: 'Мой партнёр',
-                    onTap: () => context.push('/pair'),
-                    semanticLabel: 'Открыть экран партнёра',
-                  ),
-                ],
-              ),
-            )
-                .animate()
-                .fadeIn(delay: 160.ms, duration: Anim.normal)
-                .slideY(begin: 0.03, end: 0, duration: Anim.normal),
-
-            const SizedBox(height: S.xl),
-
-            Text('Достижения', style: theme.textTheme.headlineMedium),
-            const SizedBox(height: S.m),
-            Wrap(
-              spacing: S.s,
-              runSpacing: S.s,
-              children: achievements.map((a) {
-                return Chip(
-                  avatar: a.done
-                      ? ShaderMask(
-                          shaderCallback: (b) =>
-                              C.gradientPrimary.createShader(b),
-                          child: const MIcon(MIconType.check,
-                              size: 18, color: Colors.white),
-                        )
-                      : const MIcon(MIconType.lock,
-                          size: 18, color: C.textDim),
-                  label: Text(a.title),
-                  backgroundColor:
-                      a.done ? C.surfaceLight : C.surface,
-                  side: BorderSide(
-                    color: a.done
-                        ? C.accent.withValues(alpha: 0.35)
-                        : C.surfaceBorder,
-                  ),
-                  labelStyle: TextStyle(
-                    color: a.done ? C.text : C.textDim,
-                    fontSize: 13,
-                  ),
-                );
-              }).toList(),
-            ).animate().fadeIn(delay: 200.ms, duration: Anim.normal),
-
-            const SizedBox(height: S.xxl),
-
-            GlassCard(
-              onTap: _signOut,
-              semanticLabel: 'Выйти из аккаунта',
-              opacity: 0.06,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  MIcon(MIconType.logout,
-                      size: 20,
-                      color: C.error.withValues(alpha: 0.8)),
-                  const SizedBox(width: S.s),
-                  Text(
-                    'Выйти',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      color: C.error,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
             ),
           ),
         ),
@@ -462,6 +409,52 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ),
       ],
+    );
+  }
+}
+
+class _StatTile extends StatelessWidget {
+  const _StatTile({
+    required this.icon,
+    required this.value,
+    required this.label,
+    required this.accentColor,
+    this.showGlow = false,
+  });
+
+  final MIconType icon;
+  final int value;
+  final String label;
+  final Color accentColor;
+  final bool showGlow;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return GlassCard(
+      variant: GlassCardVariant.surface,
+      showGlow: showGlow,
+      glowColor: accentColor.withValues(alpha: 0.3),
+      padding: const EdgeInsets.symmetric(horizontal: S.m, vertical: S.m),
+      child: SizedBox(
+        width: 88,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            ShaderMask(
+              shaderCallback: (b) => LinearGradient(colors: [accentColor, accentColor]).createShader(b),
+              child: MIcon(icon, size: 20, color: Colors.white),
+            ),
+            const SizedBox(height: S.s),
+            AnimatedNumber(
+              value: value,
+              style: t.headlineMedium?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            Text(label, style: t.bodySmall?.copyWith(color: context.cTextSec)),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -491,16 +484,19 @@ class _MenuRow extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.onTap,
+    this.subtitle,
     this.semanticLabel,
   });
 
-  final Widget icon;
+  final MIconType icon;
   final String title;
   final VoidCallback onTap;
+  final String? subtitle;
   final String? semanticLabel;
 
   @override
   Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
     return Semantics(
       button: true,
       label: semanticLabel ?? title,
@@ -512,14 +508,20 @@ class _MenuRow extends StatelessWidget {
             children: [
               ShaderMask(
                 shaderCallback: (b) => C.gradientPrimary.createShader(b),
-                child: icon,
+                child: MIcon(icon, size: 22, color: Colors.white),
               ),
               const SizedBox(width: S.m),
               Expanded(
-                child: Text(title,
-                    style: Theme.of(context).textTheme.titleMedium),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: t.titleMedium),
+                    if (subtitle != null)
+                      Text(subtitle!, style: t.bodySmall?.copyWith(color: context.cTextSec)),
+                  ],
+                ),
               ),
-              const Icon(Icons.chevron_right_rounded, color: C.textDim),
+              MIcon(MIconType.chevronRight, color: context.cTextDim, size: 22),
             ],
           ),
         ),

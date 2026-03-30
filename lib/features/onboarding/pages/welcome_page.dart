@@ -4,8 +4,6 @@ import 'package:meditator/app/theme.dart';
 import 'package:meditator/shared/utils/accessibility.dart';
 import 'package:meditator/shared/widgets/aura_avatar.dart';
 import 'package:meditator/shared/widgets/glow_button.dart';
-import 'package:meditator/shared/widgets/meditator_illustration.dart';
-import 'package:meditator/shared/widgets/onboarding_illustration.dart';
 import 'package:meditator/shared/widgets/particle_field.dart';
 
 class WelcomePage extends StatefulWidget {
@@ -22,14 +20,38 @@ class WelcomePage extends StatefulWidget {
   State<WelcomePage> createState() => _WelcomePageState();
 }
 
-class _WelcomePageState extends State<WelcomePage> {
-  double _avatarScale = 1.06;
+class _WelcomePageState extends State<WelcomePage>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _breatheCtrl;
   bool _reduceMotion = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _breatheCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 4),
+    )..repeat(reverse: true);
+  }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _reduceMotion = AccessibilityUtils.reduceMotion(context);
+    final rm = AccessibilityUtils.reduceMotion(context);
+    if (_reduceMotion != rm) {
+      _reduceMotion = rm;
+      if (_reduceMotion) {
+        _breatheCtrl.stop();
+      } else if (!_breatheCtrl.isAnimating) {
+        _breatheCtrl.repeat(reverse: true);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _breatheCtrl.dispose();
+    super.dispose();
   }
 
   @override
@@ -42,11 +64,11 @@ class _WelcomePageState extends State<WelcomePage> {
             child: DecoratedBox(
               decoration: BoxDecoration(
                 gradient: RadialGradient(
-                  center: const Alignment(0, -0.2),
-                  radius: 1.15,
+                  center: const Alignment(0, -0.3),
+                  radius: 1.0,
                   colors: [
-                    C.primary.withValues(alpha: 0.12),
-                    C.accent.withValues(alpha: 0.04),
+                    C.primary.withValues(alpha: 0.14),
+                    C.accent.withValues(alpha: 0.06),
                     Colors.transparent,
                   ],
                 ),
@@ -60,55 +82,56 @@ class _WelcomePageState extends State<WelcomePage> {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: S.l),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Spacer(flex: 2),
-              Center(
-                child: OnboardingIllustration(
-                  scene: OnboardingScene.welcome,
-                  size: 200,
-                )
-                    .animate()
-                    .fadeIn(duration: 500.ms)
-                    .scale(
-                      begin: const Offset(0.9, 0.9),
-                      end: const Offset(1, 1),
-                      duration: 500.ms,
-                      curve: Curves.easeOutCubic,
-                    ),
-              ),
-              const SizedBox(height: S.m),
-              SizedBox(
-                width: 300,
-                height: 300,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    const MeditatorIllustration(size: 300),
-                    _reduceMotion
-                        ? const AuraAvatar(size: 80)
-                        : TweenAnimationBuilder<double>(
-                            tween: Tween(begin: 0.94, end: _avatarScale),
-                            duration: const Duration(seconds: 3),
-                            curve: Curves.easeInOut,
-                            onEnd: () => setState(() {
-                              _avatarScale = _avatarScale > 1.0 ? 0.94 : 1.06;
-                            }),
-                            builder: (_, scale, child) =>
-                                Transform.scale(scale: scale, child: child),
-                            child: const AuraAvatar(size: 80),
+              const Spacer(flex: 3),
+              AnimatedBuilder(
+                animation: _breatheCtrl,
+                builder: (context, child) {
+                  final breathe = _reduceMotion ? 0.5 : _breatheCtrl.value;
+                  final scale = 1.0 + 0.04 * breathe;
+                  final glowAlpha = 0.15 + 0.12 * breathe;
+                  return Transform.scale(
+                    scale: scale,
+                    child: Container(
+                      width: 140,
+                      height: 140,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: C.primary.withValues(alpha: glowAlpha),
+                            blurRadius: 50 + 20 * breathe,
+                            spreadRadius: 10 + 10 * breathe,
                           ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: S.l),
+                          BoxShadow(
+                            color: C.accent.withValues(alpha: glowAlpha * 0.6),
+                            blurRadius: 30 + 15 * breathe,
+                            spreadRadius: 5,
+                          ),
+                        ],
+                      ),
+                      child: child,
+                    ),
+                  );
+                },
+                child: const AuraAvatar(size: 120),
+              )
+                  .animate()
+                  .fadeIn(duration: 800.ms, curve: Curves.easeOut)
+                  .scale(
+                    begin: const Offset(0.7, 0.7),
+                    end: const Offset(1, 1),
+                    duration: 800.ms,
+                    curve: Curves.easeOutCubic,
+                  ),
+              const SizedBox(height: S.xxl),
               Text(
                 'Meditator',
                 textAlign: TextAlign.center,
                 style: t.displayLarge,
               )
                   .animate()
-                  .fadeIn(duration: 800.ms)
+                  .fadeIn(delay: 300.ms, duration: 600.ms)
                   .then()
                   .shimmer(
                     duration: 1200.ms,
@@ -118,18 +141,18 @@ class _WelcomePageState extends State<WelcomePage> {
               Text(
                 'Пространство покоя внутри тебя',
                 textAlign: TextAlign.center,
-                style: t.bodyLarge?.copyWith(color: C.textSec, height: 1.45),
-              ).animate().fadeIn(delay: 400.ms, duration: 600.ms),
+                style: t.bodyLarge?.copyWith(color: context.cTextSec, height: 1.45),
+              ).animate().fadeIn(delay: 500.ms, duration: 600.ms),
               const SizedBox(height: S.s),
               ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 320),
                 child: Text(
                   'Персональные практики, дыхание и мягкая поддержка Aura каждый день.',
                   textAlign: TextAlign.center,
-                  style: t.bodyMedium?.copyWith(color: C.textDim, height: 1.5),
+                  style: t.bodyMedium?.copyWith(color: context.cTextDim, height: 1.5),
                 ),
-              ).animate().fadeIn(delay: 470.ms, duration: 600.ms),
-              const Spacer(flex: 2),
+              ).animate().fadeIn(delay: 600.ms, duration: 600.ms),
+              const Spacer(flex: 3),
               GlowButton(
                 onPressed: widget.onStart,
                 width: double.infinity,
@@ -138,20 +161,21 @@ class _WelcomePageState extends State<WelcomePage> {
                 child: const Text('Начать путь'),
               )
                   .animate()
-                  .fadeIn(delay: 500.ms, duration: 500.ms)
+                  .fadeIn(delay: 700.ms, duration: 500.ms)
                   .slideY(
-                      begin: 0.15,
-                      delay: 500.ms,
-                      duration: 500.ms,
-                      curve: Anim.curve),
+                    begin: 0.15,
+                    delay: 700.ms,
+                    duration: 500.ms,
+                    curve: Anim.curve,
+                  ),
               const SizedBox(height: S.m),
               TextButton(
                 onPressed: widget.onHasAccount,
                 child: Text(
                   'Уже есть аккаунт',
-                  style: t.labelLarge?.copyWith(color: C.textSec),
+                  style: t.labelLarge?.copyWith(color: context.cTextSec),
                 ),
-              ).animate().fadeIn(delay: 600.ms, duration: 400.ms),
+              ).animate().fadeIn(delay: 800.ms, duration: 400.ms),
               const SizedBox(height: S.xl),
             ],
           ),

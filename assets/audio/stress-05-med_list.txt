@@ -1,0 +1,2 @@
+file '/Users/timofejsemikin/Desktop/Meditator/assets/audio/stress-05-med_chunk0.mp3'
+file '/Users/timofejsemikin/Desktop/Meditator/assets/audio/stress-05-med_chunk1.mp3'

@@ -3,6 +3,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
 import 'package:meditator/app/theme.dart';
 import 'package:meditator/shared/models/breathing.dart';
+import 'package:meditator/shared/widgets/custom_icons.dart';
 import 'package:meditator/shared/widgets/glass_card.dart';
 import 'package:meditator/shared/widgets/gradient_bg.dart';
 
@@ -40,12 +41,12 @@ class BreathingListScreen extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(S.l, 0, S.l, S.l),
                 child: Text(
                   'Самый быстрый способ изменить состояние',
-                  style: tt.bodyLarge?.copyWith(color: C.textSec),
+                  style: tt.bodyLarge?.copyWith(color: context.cTextSec),
                 ).animate().fadeIn(delay: 80.ms, duration: Anim.slow),
               ),
             ),
             SliverPadding(
-              padding: const EdgeInsets.fromLTRB(S.m, 0, S.m, S.xxl),
+              padding: const EdgeInsets.fromLTRB(S.m, 0, S.m, 120),
               sliver: SliverList(
                 delegate: SliverChildBuilderDelegate(
                   (context, i) {
@@ -137,7 +138,6 @@ class _ExerciseCard extends StatelessWidget {
                     Text(
                       e.description,
                       style: tt.bodyMedium?.copyWith(
-                        color: C.textSec,
                         height: 1.4,
                       ),
                     ),
@@ -145,7 +145,6 @@ class _ExerciseCard extends StatelessWidget {
                     Text(
                       e.benefit,
                       style: tt.bodySmall?.copyWith(
-                        color: C.textDim,
                         height: 1.35,
                       ),
                     ),
@@ -153,11 +152,11 @@ class _ExerciseCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: S.s),
-              const Align(
+              Align(
                 alignment: Alignment.centerRight,
-                child: Icon(
-                  Icons.chevron_right_rounded,
-                  color: C.textDim,
+                child: MIcon(
+                  MIconType.chevronRight,
+                  color: context.cTextDim,
                   size: 20,
                 ),
               ),

@@ -7,6 +7,7 @@ import 'package:meditator/shared/widgets/onboarding_illustration.dart';
 class FinishPage extends StatefulWidget {
   const FinishPage({
     super.key,
+    required this.nameController,
     required this.emailController,
     required this.passwordController,
     required this.onCreateAccount,
@@ -14,6 +15,7 @@ class FinishPage extends StatefulWidget {
     required this.isLoading,
   });
 
+  final TextEditingController nameController;
   final TextEditingController emailController;
   final TextEditingController passwordController;
   final VoidCallback onCreateAccount;
@@ -25,17 +27,23 @@ class FinishPage extends StatefulWidget {
 }
 
 class _FinishPageState extends State<FinishPage> {
+  final _nameFocus = FocusNode();
   final _emailFocus = FocusNode();
   final _passwordFocus = FocusNode();
+  bool _nameFocused = false;
   bool _emailFocused = false;
   bool _passwordFocused = false;
 
   @override
   void initState() {
     super.initState();
+    _nameFocus.addListener(_onNameFocusChange);
     _emailFocus.addListener(_onEmailFocusChange);
     _passwordFocus.addListener(_onPasswordFocusChange);
   }
+
+  void _onNameFocusChange() =>
+      setState(() => _nameFocused = _nameFocus.hasFocus);
 
   void _onEmailFocusChange() =>
       setState(() => _emailFocused = _emailFocus.hasFocus);
@@ -45,8 +53,10 @@ class _FinishPageState extends State<FinishPage> {
 
   @override
   void dispose() {
+    _nameFocus.removeListener(_onNameFocusChange);
     _emailFocus.removeListener(_onEmailFocusChange);
     _passwordFocus.removeListener(_onPasswordFocusChange);
+    _nameFocus.dispose();
     _emailFocus.dispose();
     _passwordFocus.dispose();
     super.dispose();
@@ -82,9 +92,19 @@ class _FinishPageState extends State<FinishPage> {
           const SizedBox(height: S.m),
           Text(
             'Создай аккаунт, чтобы сохранить прогресс, или продолжи как гость.',
-            style: t.bodyMedium?.copyWith(color: C.textDim, height: 1.45),
+            style: t.bodyMedium?.copyWith(color: context.cTextDim, height: 1.45),
           ).animate().fadeIn(delay: 90.ms, duration: 400.ms),
           const SizedBox(height: S.l),
+          _buildGradientField(
+            controller: widget.nameController,
+            focusNode: _nameFocus,
+            isFocused: _nameFocused,
+            hint: 'Твоё имя',
+            keyboardType: TextInputType.name,
+            autofillHints: const [AutofillHints.givenName],
+            delay: 140,
+          ),
+          const SizedBox(height: S.m),
           _buildGradientField(
             controller: widget.emailController,
             focusNode: _emailFocus,
@@ -92,7 +112,7 @@ class _FinishPageState extends State<FinishPage> {
             hint: 'Эл. почта',
             keyboardType: TextInputType.emailAddress,
             autofillHints: const [AutofillHints.email],
-            delay: 140,
+            delay: 200,
           ),
           const SizedBox(height: S.m),
           _buildGradientField(
@@ -102,7 +122,7 @@ class _FinishPageState extends State<FinishPage> {
             hint: 'Пароль',
             obscureText: true,
             autofillHints: const [AutofillHints.newPassword],
-            delay: 200,
+            delay: 260,
           ),
           const SizedBox(height: S.l),
           GlowButton(
@@ -112,17 +132,17 @@ class _FinishPageState extends State<FinishPage> {
             showGlow: true,
             semanticLabel: 'Создать аккаунт',
             child: const Text('Создать аккаунт'),
-          ).animate().fadeIn(delay: 260.ms, duration: 400.ms),
+          ).animate().fadeIn(delay: 320.ms, duration: 400.ms),
           const SizedBox(height: S.m),
           Center(
             child: TextButton(
               onPressed: widget.isLoading ? null : widget.onSkip,
               child: Text(
                 'Пропустить',
-                style: t.labelLarge?.copyWith(color: C.textDim),
+                style: t.labelLarge?.copyWith(color: context.cTextDim),
               ),
             ),
-          ).animate().fadeIn(delay: 320.ms, duration: 350.ms),
+          ).animate().fadeIn(delay: 380.ms, duration: 350.ms),
         ],
       ),
     );
@@ -152,11 +172,11 @@ class _FinishPageState extends State<FinishPage> {
         keyboardType: keyboardType,
         obscureText: obscureText,
         autofillHints: autofillHints,
-        style: const TextStyle(color: C.text),
+        style: TextStyle(color: context.cText),
         decoration: InputDecoration(
           hintText: hint,
           filled: true,
-          fillColor: C.surfaceLight,
+          fillColor: context.cSurfaceLight,
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(R.m - 1.5),
             borderSide: BorderSide.none,
@@ -169,7 +189,7 @@ class _FinishPageState extends State<FinishPage> {
             borderRadius: BorderRadius.circular(R.m - 1.5),
             borderSide: BorderSide.none,
           ),
-          hintStyle: const TextStyle(color: C.textDim),
+          hintStyle: TextStyle(color: context.cTextDim),
           contentPadding:
               const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         ),

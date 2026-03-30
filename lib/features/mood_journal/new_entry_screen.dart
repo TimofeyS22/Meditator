@@ -1,9 +1,13 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
 import 'package:meditator/app/theme.dart';
+import 'package:meditator/core/api/api_service.dart';
 import 'package:meditator/core/api/backend.dart';
+import 'package:meditator/core/auth/auth_service.dart';
 import 'package:meditator/core/database/db.dart';
 import 'package:meditator/shared/models/mood_entry.dart';
 import 'package:meditator/shared/widgets/emotion_chip.dart';
@@ -11,8 +15,12 @@ import 'package:meditator/shared/widgets/glass_card.dart';
 import 'package:meditator/shared/widgets/glow_button.dart';
 import 'package:meditator/shared/widgets/gradient_bg.dart';
 import 'package:meditator/shared/widgets/aura_avatar.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:meditator/shared/widgets/voice_recorder.dart';
+import 'package:meditator/shared/widgets/custom_icons.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
+
+const _kLocalJournalKey = 'meditator_local_journal';
 
 class NewEntryScreen extends StatefulWidget {
   const NewEntryScreen({super.key});
@@ -30,6 +38,8 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
   final _noteFocus = FocusNode();
   bool _saving = false;
   bool _noteFocused = false;
+  bool _voiceInputActive = false;
+  bool _transcribingVoice = false;
 
   @override
   void initState() {
@@ -63,15 +73,15 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
   }
 
   Future<void> _save() async {
-    final uid = Supabase.instance.client.auth.currentUser?.id;
-    if (uid == null || _primary == null) return;
+    if (_primary == null) return;
 
     setState(() => _saving = true);
+    final uid = AuthService.instance.userId;
     final id = const Uuid().v4();
     final now = DateTime.now();
     final entry = MoodEntry(
       id: id,
-      userId: uid,
+      userId: uid ?? 'local',
       primary: _primary!,
       secondary: _secondary.toList(),
       intensity: _intensity.round().clamp(1, 5),
@@ -79,35 +89,44 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
       createdAt: now,
     );
 
+    String insight = '';
+
     try {
-      await Db.instance.insertMoodEntry({
-        'id': id,
-        'user_id': uid,
-        'primary': _primary!.name,
-        'secondary': _secondary.map((e) => e.name).toList(),
-        'intensity': entry.intensity,
-        'note': entry.note,
-        'created_at': now.toIso8601String(),
-      });
+      if (uid != null && uid.isNotEmpty) {
+        await Db.instance.insertMoodEntry({
+          'id': id,
+          'user_id': uid,
+          'primary_emotion': _primary!.name,
+          'secondary_emotions': _secondary.map((e) => e.name).toList(),
+          'intensity': entry.intensity,
+          'note': entry.note,
+          'created_at': now.toIso8601String(),
+        });
 
-      final rows = await Db.instance.getMoodEntries(uid, limit: 40);
-      final entriesMaps = rows.map((r) {
-        return {
-          'primary': r['primary'],
-          'intensity': r['intensity'] ?? 3,
-          'secondary': r['secondary'] ?? [],
-          'note': r['note'],
-          'created_at': r['created_at'] ?? r['createdAt'],
-        };
-      }).toList();
-
-      final analysis = await Backend.instance.analyzeMood(
-        entries: entriesMaps,
-        userGoals: const [],
-      );
-      final insight = _extractInsight(analysis);
-      if (insight.isNotEmpty) {
-        await Db.instance.updateMoodInsight(id, insight);
+        try {
+          final rows = await Db.instance.getMoodEntries(uid, limit: 40);
+          final entriesMaps = rows.map((r) => {
+            'primary_emotion': r['primary_emotion'],
+            'intensity': r['intensity'] ?? 3,
+            'note': r['note'],
+            'created_at': r['created_at'] ?? r['createdAt'],
+          }).toList();
+          final analysis = await Backend.instance.analyzeMood(
+            entries: entriesMaps, userGoals: const [],
+          );
+          insight = _extractInsight(analysis);
+          if (insight.isNotEmpty) {
+            await Db.instance.updateMoodInsight(id, insight);
+          }
+        } catch (_) {}
+      } else {
+        final prefs = await SharedPreferences.getInstance();
+        final raw = prefs.getString(_kLocalJournalKey);
+        final list = raw != null && raw.isNotEmpty
+            ? (jsonDecode(raw) as List<dynamic>).cast<Map<String, dynamic>>()
+            : <Map<String, dynamic>>[];
+        list.insert(0, entry.toJson());
+        await prefs.setString(_kLocalJournalKey, jsonEncode(list));
       }
 
       if (!mounted) return;
@@ -133,17 +152,16 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
                     children: [
                       Row(
                         children: [
-                          SizedBox(
+                          const SizedBox(
                             width: 36,
                             height: 36,
-                            child: const AuraAvatar(size: 36),
+                            child: AuraAvatar(size: 36),
                           ),
                           const SizedBox(width: S.s),
                           Text('Aura',
                               style: Theme.of(ctx)
                                   .textTheme
-                                  .titleMedium
-                                  ?.copyWith(color: C.text)),
+                                  .titleMedium),
                         ],
                       ),
                       const SizedBox(height: S.m),
@@ -152,7 +170,6 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
                             ? insight
                             : 'Спасибо, что поделился. Это уже забота о себе.',
                         style: Theme.of(ctx).textTheme.bodyLarge?.copyWith(
-                              color: C.textSec,
                               height: 1.5,
                             ),
                       ),
@@ -177,11 +194,65 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
       if (mounted) {
         setState(() => _saving = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content:
-                  Text('Не удалось сохранить. Проверь сеть и попробуй снова.')),
+          const SnackBar(content: Text('Не удалось сохранить')),
         );
       }
+    }
+  }
+
+  String? _transcriptionFromResponse(Map<String, dynamic>? m) {
+    if (m == null) return null;
+    for (final key in ['text', 'transcription', 'transcript', 'message']) {
+      final v = m[key];
+      if (v is String && v.trim().isNotEmpty) return v.trim();
+    }
+    final data = m['data'];
+    if (data is Map) {
+      final dm = Map<String, dynamic>.from(data);
+      for (final key in ['text', 'transcription', 'transcript']) {
+        final v = dm[key];
+        if (v is String && v.trim().isNotEmpty) return v.trim();
+      }
+    }
+    return null;
+  }
+
+  Future<void> _showVoiceRecorderSheet() async {
+    FocusScope.of(context).unfocus();
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: context.cSurface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(R.xl)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: VoiceRecorder(
+          onRecordingComplete: (path) {
+            Navigator.of(ctx).pop();
+            _applyVoiceTranscription(path);
+          },
+          onCancel: () => Navigator.of(ctx).pop(),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _applyVoiceTranscription(String filePath) async {
+    if (!mounted) return;
+    setState(() => _transcribingVoice = true);
+    final map = await ApiService.instance.transcribeAudio(filePath);
+    final text = _transcriptionFromResponse(map);
+    if (!mounted) return;
+    setState(() => _transcribingVoice = false);
+    if (text != null && text.isNotEmpty) {
+      setState(() {
+        _note.text = text;
+        _voiceInputActive = true;
+      });
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось распознать речь')),
+      );
     }
   }
 
@@ -237,8 +308,8 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
                   child: Row(
                     children: [
                       IconButton(
-                        icon: const Icon(Icons.arrow_back_rounded,
-                            color: C.text),
+                        icon: MIcon(MIconType.arrowBack,
+                            size: 24, color: context.cText),
                         tooltip: 'Назад',
                         onPressed: _back,
                       ),
@@ -248,8 +319,7 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
                           textAlign: TextAlign.center,
                           style: Theme.of(context)
                               .textTheme
-                              .titleMedium
-                              ?.copyWith(color: C.text),
+                              .titleMedium,
                         ),
                       ),
                       const SizedBox(width: 48),
@@ -257,29 +327,36 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
                   ),
                 ),
 
-                // Step progress
+                // Step progress — unified gradient bar
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: S.m),
                   child: Semantics(
                     label: 'Шаг ${_step + 1} из 4',
-                    child: Row(
-                      children: List.generate(4, (i) {
-                        final active = i <= _step;
-                        return Expanded(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 2),
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final totalWidth = constraints.maxWidth;
+                        final progress = (_step + 1) / 4;
+                        return Container(
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: context.cSurfaceLight,
+                            borderRadius: BorderRadius.circular(R.full),
+                          ),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
                             child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 220),
+                              duration: const Duration(milliseconds: 350),
+                              curve: Anim.curve,
+                              width: totalWidth * progress,
                               height: 4,
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(R.full),
-                                gradient: active ? C.gradientPrimary : null,
-                                color: active ? null : C.surfaceLight,
+                                gradient: C.gradientPrimary,
                               ),
                             ),
                           ),
                         );
-                      }),
+                      },
                     ),
                   ),
                 ),
@@ -319,8 +396,8 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
                             if (_step == 1)
                               TextButton(
                                 onPressed: _next,
-                                child: const Text('Пропустить',
-                                    style: TextStyle(color: C.textSec)),
+                                child: Text('Пропустить',
+                                    style: TextStyle(color: context.cTextSec)),
                               ),
                             const Spacer(),
                             GlowButton(
@@ -366,7 +443,8 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
                 children: [
                   for (final e in Emotion.values)
                     EmotionChip(
-                      emoji: e.emoji,
+                      iconData: e.iconData,
+                      iconColor: e.color,
                       label: e.label,
                       color: e.color,
                       isSelected: _primary == e,
@@ -393,7 +471,7 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
                   style: Theme.of(context)
                       .textTheme
                       .bodyMedium
-                      ?.copyWith(color: C.textDim)),
+                      ?.copyWith(color: context.cTextDim)),
               const SizedBox(height: S.m),
               Wrap(
                 spacing: S.s,
@@ -402,7 +480,8 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
                   for (final e in Emotion.values)
                     if (e != _primary)
                       EmotionChip(
-                        emoji: e.emoji,
+                        iconData: e.iconData,
+                        iconColor: e.color,
                         label: e.label,
                         color: e.color,
                         isSelected: _secondary.contains(e),
@@ -458,10 +537,10 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
                         setState(() => _intensity = level.toDouble());
                       },
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: S.s),
+                        padding: const EdgeInsets.symmetric(horizontal: S.xs),
                         child: SizedBox(
-                          width: 36,
-                          height: 36,
+                          width: 44,
+                          height: 44,
                           child: Center(
                             child: AnimatedContainer(
                               duration: Anim.fast,
@@ -505,16 +584,14 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
                     child: Text('Легко',
                         style: Theme.of(context)
                             .textTheme
-                            .bodySmall
-                            ?.copyWith(color: C.textDim)),
+                            .bodySmall),
                   ),
                   Padding(
                     padding: const EdgeInsets.only(right: S.xl),
                     child: Text('Очень сильно',
                         style: Theme.of(context)
                             .textTheme
-                            .bodySmall
-                            ?.copyWith(color: C.textDim)),
+                            .bodySmall),
                   ),
                 ],
               ),
@@ -537,36 +614,96 @@ class _NewEntryScreenState extends State<NewEntryScreen> {
                   style: Theme.of(context)
                       .textTheme
                       .bodyMedium
-                      ?.copyWith(color: C.textDim)),
+                      ?.copyWith(color: context.cTextDim)),
               const SizedBox(height: S.m),
-              AnimatedContainer(
-                duration: Anim.fast,
-                curve: Anim.curve,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(R.m + 2),
-                  gradient: _noteFocused ? C.gradientPrimary : null,
-                ),
-                padding: const EdgeInsets.all(1.5),
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: C.surfaceLight,
-                    borderRadius: BorderRadius.circular(R.m),
+              if (_voiceInputActive)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: S.s),
+                  child: Row(
+                    children: [
+                      const MIcon(MIconType.mic, size: 16, color: C.accent),
+                      const SizedBox(width: S.xs),
+                      Text(
+                        'Голосовой ввод',
+                        style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                              color: C.accent,
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
+                    ],
                   ),
-                  child: TextField(
-                    controller: _note,
-                    focusNode: _noteFocus,
-                    minLines: 5,
-                    maxLines: null,
-                    style: const TextStyle(color: C.text),
-                    decoration: InputDecoration(
-                      hintText: 'Что было на душе...',
-                      border: InputBorder.none,
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 16),
-                      hintStyle: const TextStyle(color: C.textDim),
+                ),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: AnimatedContainer(
+                      duration: Anim.fast,
+                      curve: Anim.curve,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(R.xl + 2),
+                        gradient: _noteFocused ? C.gradientPrimary : null,
+                      ),
+                      padding: const EdgeInsets.all(1.5),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: context.cSurfaceLight,
+                          borderRadius: BorderRadius.circular(R.xl),
+                        ),
+                        child: TextField(
+                          controller: _note,
+                          focusNode: _noteFocus,
+                          minLines: 5,
+                          maxLines: null,
+                          style: TextStyle(color: context.cText),
+                          onChanged: (_) {
+                            if (_voiceInputActive) {
+                              setState(() => _voiceInputActive = false);
+                            }
+                          },
+                          decoration: InputDecoration(
+                            hintText: 'Что было на душе...',
+                            filled: false,
+                            border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 20, vertical: 16),
+                            hintStyle: TextStyle(color: context.cTextDim),
+                          ),
+                        ),
+                      ),
                     ),
                   ),
-                ),
+                  const SizedBox(width: S.xs),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: _transcribingVoice
+                        ? const SizedBox(
+                            width: 44,
+                            height: 44,
+                            child: Center(
+                              child: SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: C.accent,
+                                ),
+                              ),
+                            ),
+                          )
+                        : IconButton(
+                            tooltip: 'Голосовой ввод',
+                            onPressed: _saving ? null : _showVoiceRecorderSheet,
+                            icon: const MIcon(
+                              MIconType.mic,
+                              size: 24,
+                              color: C.accent,
+                            ),
+                          ),
+                  ),
+                ],
               ),
             ],
           ),

@@ -44,9 +44,25 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# Android signing
+android/key.properties
+android/keystore/
+*.jks
+*.keystore
+
 # Environment variables
 .env
 .env.*
+!.env.example
+!.env.prod.example
+
+# Backend
+backend/.venv/
+backend/__pycache__/
+backend/app/__pycache__/
+backend/app/routers/__pycache__/
+**/__pycache__/
+*.pyc
 
 # Flutter SDK (local)
 /flutter/

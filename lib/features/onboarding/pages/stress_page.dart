@@ -5,6 +5,7 @@ import 'package:meditator/shared/models/user_profile.dart';
 import 'package:meditator/shared/widgets/glass_card.dart';
 import 'package:meditator/shared/widgets/morphing_blob.dart';
 import 'package:meditator/shared/widgets/onboarding_illustration.dart';
+import 'package:meditator/shared/widgets/custom_icons.dart';
 
 Color _stressColor(StressLevel level) => switch (level) {
       StressLevel.low => C.accent,
@@ -73,7 +74,7 @@ class StressPage extends StatelessWidget {
               const SizedBox(height: S.s),
               Text(
                 'Честный ответ поможет подобрать практики мягче.',
-                style: t.bodyMedium?.copyWith(color: C.textDim),
+                style: t.bodyMedium?.copyWith(color: context.cTextDim),
               ).animate().fadeIn(delay: 70.ms, duration: 400.ms),
               const SizedBox(height: S.l),
               ...StressLevel.values.asMap().entries.map((e) {
@@ -121,7 +122,6 @@ class StressPage extends StatelessWidget {
                                 Text(
                                   level.label,
                                   style: t.titleMedium?.copyWith(
-                                    color: C.text,
                                     fontWeight: isOn
                                         ? FontWeight.w600
                                         : FontWeight.w400,
@@ -130,8 +130,7 @@ class StressPage extends StatelessWidget {
                                 const SizedBox(height: 2),
                                 Text(
                                   _hint(level),
-                                  style:
-                                      t.bodySmall?.copyWith(color: C.textDim),
+                                  style: t.bodySmall,
                                 ),
                               ],
                             ),
@@ -139,8 +138,8 @@ class StressPage extends StatelessWidget {
                           AnimatedOpacity(
                             duration: Anim.fast,
                             opacity: isOn ? 1.0 : 0.0,
-                            child: Icon(Icons.check_circle_rounded,
-                                color: color, size: 24),
+                            child: MIcon(MIconType.check,
+                                size: 24, color: color),
                           ),
                         ],
                       ),

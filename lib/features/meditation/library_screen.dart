@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
 import 'package:meditator/app/theme.dart';
+import 'package:meditator/core/cache/meditation_cache.dart';
 import 'package:meditator/core/database/db.dart';
 import 'package:meditator/features/meditation/widgets/meditation_tile.dart';
 import 'package:meditator/shared/models/meditation.dart';
+import 'package:meditator/shared/widgets/custom_icons.dart';
 import 'package:meditator/shared/widgets/gradient_bg.dart';
+import 'package:meditator/shared/widgets/skeleton_placeholders.dart';
 
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({super.key});
@@ -56,15 +59,21 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   Future<void> _fetch() async {
     setState(() => _loading = true);
-    try {
-      final rows = await Db.instance.getMeditations();
-      if (!mounted) return;
+    final rows = await Db.instance.getMeditations();
+    if (!mounted) return;
+    if (rows.isNotEmpty) {
+      MeditationCache.instance.save(rows);
       setState(() {
         _all = rows.map((e) => Meditation.fromJson(e)).toList();
         _loading = false;
       });
-    } catch (_) {
-      if (mounted) setState(() => _loading = false);
+    } else {
+      final cached = await MeditationCache.instance.load();
+      if (!mounted) return;
+      setState(() {
+        _all = (cached ?? []).map((e) => Meditation.fromJson(e)).toList();
+        _loading = false;
+      });
     }
   }
 
@@ -107,8 +116,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   IconButton(
                     onPressed: () => context.pop(),
                     tooltip: 'Назад',
-                    icon:
-                        const Icon(Icons.arrow_back_rounded, color: C.text),
+                    icon: MIcon(MIconType.arrowBack, size: 24, color: context.cText),
                   ),
                   Expanded(
                     child: Text(
@@ -128,7 +136,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 duration: Anim.normal,
                 curve: Anim.curve,
                 decoration: BoxDecoration(
-                  color: C.surfaceLight,
+                  color: context.cSurfaceLight,
                   borderRadius: BorderRadius.circular(R.m),
                   border: Border.all(
                     color: _searchFocused ? C.primary : Colors.transparent,
@@ -148,17 +156,15 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   controller: _search,
                   focusNode: _searchFocus,
                   onChanged: (_) => setState(() {}),
+                  style: TextStyle(color: context.cText),
                   decoration: InputDecoration(
                     hintText: 'Поиск',
-                    prefixIcon: AnimatedContainer(
-                      duration: Anim.fast,
-                      width: _searchFocused ? 56 : 48,
-                      child: const Icon(Icons.search_rounded,
-                          color: C.textDim),
-                    ),
+                    prefixIcon: MIcon(MIconType.search, size: 22, color: context.cTextDim),
+                    filled: false,
                     border: InputBorder.none,
                     enabledBorder: InputBorder.none,
                     focusedBorder: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 14),
                   ),
                 ),
               ),
@@ -170,11 +176,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
             const SizedBox(height: S.m),
 
             SizedBox(
-              height: 40,
+              height: 48,
               child: Semantics(
                 label: 'Фильтры категорий медитаций',
                 child: ListView(
                   scrollDirection: Axis.horizontal,
+                  clipBehavior: Clip.none,
                   padding: const EdgeInsets.symmetric(horizontal: S.m),
                   children: [
                     _FilterChip(
@@ -186,7 +193,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                       return Padding(
                         padding: const EdgeInsets.only(left: S.s),
                         child: _FilterChip(
-                          label: '${c.emoji} ${c.label}',
+                          label: c.label,
                           selected: _category == c,
                           onTap: () => setState(() => _category = c),
                         ),
@@ -201,52 +208,61 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
             Expanded(
               child: _loading
-                  ? const Center(
-                      child: CircularProgressIndicator(color: C.accent))
-                  : list.isEmpty
-                      ? Center(
-                          child: Container(
-                            margin: const EdgeInsets.symmetric(horizontal: S.l),
-                            padding: const EdgeInsets.all(S.l),
-                            decoration: BoxDecoration(
-                              color: C.surface.withValues(alpha: 0.65),
-                              borderRadius: BorderRadius.circular(R.l),
-                              border: Border.all(color: C.surfaceBorder),
+                  ? const LibrarySkeleton()
+                  : RefreshIndicator(
+                      color: C.accent,
+                      onRefresh: _fetch,
+                      child: list.isEmpty
+                          ? ListView(
+                              children: [
+                                const SizedBox(height: 80),
+                                Center(
+                                  child: Container(
+                                    margin: const EdgeInsets.symmetric(horizontal: S.l),
+                                    padding: const EdgeInsets.all(S.l),
+                                    decoration: BoxDecoration(
+                                      color: context.cSurface.withValues(alpha: 0.65),
+                                      borderRadius: BorderRadius.circular(R.l),
+                                      border: Border.all(color: context.cSurfaceBorder),
+                                    ),
+                                    child: Text(
+                                      'Ничего не нашли — попробуй другой запрос.',
+                                      textAlign: TextAlign.center,
+                                      style: t.bodyMedium,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            )
+                          : GridView.builder(
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              padding: const EdgeInsets.fromLTRB(
+                                  S.m, 0, S.m, 100),
+                              gridDelegate:
+                                  const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 2,
+                                mainAxisSpacing: S.m,
+                                crossAxisSpacing: S.m,
+                                childAspectRatio: 0.75,
+                              ),
+                              itemCount: list.length,
+                              itemBuilder: (_, i) =>
+                                  MeditationTile(meditation: list[i], index: i),
                             ),
-                            child: Text(
-                              'Ничего не нашли — попробуй другой запрос.',
-                              textAlign: TextAlign.center,
-                              style: t.bodyMedium?.copyWith(color: C.textSec),
-                            ),
-                          ),
-                        )
-                      : GridView.builder(
-                          padding: const EdgeInsets.fromLTRB(
-                              S.m, 0, S.m, 100),
-                          gridDelegate:
-                              const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 2,
-                            mainAxisSpacing: S.m,
-                            crossAxisSpacing: S.m,
-                            childAspectRatio: 0.78,
-                          ),
-                          itemCount: list.length,
-                          itemBuilder: (_, i) =>
-                              MeditationTile(meditation: list[i], index: i),
-                        ),
+                    ),
             ),
           ],
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => context.push('/aura'),
-        backgroundColor: C.surfaceLight,
+        backgroundColor: context.cSurfaceLight,
         foregroundColor: C.accent,
         tooltip: 'Создать медитацию с Aura',
         icon: ShaderMask(
           shaderCallback: (b) => C.gradientPrimary.createShader(b),
           child:
-              const Icon(Icons.auto_awesome_rounded, color: Colors.white),
+              const MIcon(MIconType.star, color: Colors.white, size: 22),
         ),
         label: const Text('Создать с Aura'),
       ),
@@ -284,11 +300,11 @@ class _FilterChip extends StatelessWidget {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(R.full),
               gradient: selected ? C.gradientPrimary : null,
-              color: selected ? null : C.surfaceLight,
+              color: selected ? null : context.cSurfaceLight,
               border: Border.all(
                 color: selected
                     ? Colors.transparent
-                    : C.surfaceBorder,
+                    : context.cSurfaceBorder,
               ),
               boxShadow: selected
                   ? [
@@ -303,7 +319,7 @@ class _FilterChip extends StatelessWidget {
             child: Text(
               label,
               style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                    color: selected ? Colors.white : C.textSec,
+                    color: selected ? Colors.white : context.cTextSec,
                     fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
                   ),
             ),

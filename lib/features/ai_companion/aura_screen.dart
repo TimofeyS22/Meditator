@@ -12,6 +12,7 @@ import 'package:meditator/shared/widgets/emotion_chip.dart';
 import 'package:meditator/shared/widgets/glow_button.dart';
 import 'package:meditator/shared/widgets/gradient_bg.dart';
 import 'package:meditator/shared/widgets/aura_avatar.dart';
+import 'package:meditator/shared/widgets/custom_icons.dart';
 
 class _ChatMessage {
   _ChatMessage({required this.role, required this.content, this.isNew = false});
@@ -56,7 +57,7 @@ class _AuraScreenState extends State<AuraScreen> with TickerProviderStateMixin {
     _shimmerCtrl = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 3800),
-    )..repeat();
+    );
     _focusNode.addListener(_onFocusChange);
     _messages.add(
       _ChatMessage(
@@ -66,6 +67,18 @@ class _AuraScreenState extends State<AuraScreen> with TickerProviderStateMixin {
       ),
     );
     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollBottom());
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final reduce = MediaQuery.of(context).disableAnimations;
+    if (!reduce && !_shimmerCtrl.isAnimating) {
+      _shimmerCtrl.repeat();
+    } else if (reduce && _shimmerCtrl.isAnimating) {
+      _shimmerCtrl.stop();
+      _shimmerCtrl.value = 0;
+    }
   }
 
   void _onFocusChange() {
@@ -93,26 +106,19 @@ class _AuraScreenState extends State<AuraScreen> with TickerProviderStateMixin {
     });
   }
 
-  String _parseAuraReply(Map<String, dynamic> m) {
-    final msg = m['message'] as String?;
-    if (msg != null && msg.trim().isNotEmpty) return msg.trim();
-    final ins = m['insight'] as String?;
-    if (ins != null && ins.trim().isNotEmpty) return ins.trim();
-    final list = m['insights'];
-    if (list is List && list.isNotEmpty) {
-      final parts = list.map((e) => e.toString()).where((s) => s.isNotEmpty);
-      if (parts.isNotEmpty) return parts.join('\n');
-    }
-    final patterns = m['patterns'];
-    if (patterns is List && patterns.isNotEmpty) {
-      return patterns.map((e) => e.toString()).join('\n');
-    }
-    return '';
-  }
-
   String _fallbackAdvice(String label) {
     return 'Слышу тебя. Сейчас важно не оценивать себя — просто заметь, что ты чувствуешь «$label». '
         'Попробуй один медленный выдох и мягко вернись к дыханию, когда будет тяжело.';
+  }
+
+  List<Map<String, String>> _buildApiMessages() {
+    return _messages
+        .where((m) => m.role == 'user' || m.role == 'aura')
+        .map((m) => {
+              'role': m.role == 'aura' ? 'assistant' : 'user',
+              'content': m.content,
+            })
+        .toList();
   }
 
   Future<void> _onUserPhrase(
@@ -131,26 +137,18 @@ class _AuraScreenState extends State<AuraScreen> with TickerProviderStateMixin {
     _scrollBottom();
 
     try {
-      final map = await Backend.instance.analyzeMood(
-        entries: [
-          {
-            'primary': moodKey,
-            'intensity': 3,
-            'secondary': <String>[],
-            'note': text.trim(),
-            'created_at': DateTime.now().toIso8601String(),
-          },
-        ],
-        userGoals: const [],
+      final apiMessages = _buildApiMessages();
+      final response = await Backend.instance.chat(
+        messages: apiMessages,
+        userContext: 'Текущее настроение: $moodLabel',
       );
-      final reply = _parseAuraReply(map);
       if (!mounted) return;
       setState(() {
         _thinking = false;
         _messages.add(
           _ChatMessage(
             role: 'aura',
-            content: reply.isNotEmpty ? reply : _fallbackAdvice(moodLabel),
+            content: response.reply.isNotEmpty ? response.reply : _fallbackAdvice(moodLabel),
             isNew: true,
           ),
         );
@@ -259,7 +257,7 @@ class _AuraScreenState extends State<AuraScreen> with TickerProviderStateMixin {
       child: Row(
         children: [
           IconButton(
-            icon: const Icon(Icons.close_rounded, color: C.text),
+            icon: MIcon(MIconType.close, size: 24, color: context.cText),
             tooltip: 'Закрыть чат',
             onPressed: () => context.pop(),
           ),
@@ -268,8 +266,7 @@ class _AuraScreenState extends State<AuraScreen> with TickerProviderStateMixin {
             'Aura',
             style: Theme.of(context)
                 .textTheme
-                .titleLarge
-                ?.copyWith(color: C.text),
+                .titleLarge,
           ).animate().fadeIn(duration: 400.ms),
           const Spacer(),
           const SizedBox(width: 48),
@@ -333,7 +330,7 @@ class _AuraScreenState extends State<AuraScreen> with TickerProviderStateMixin {
               decoration: BoxDecoration(
                 color: Colors.white.withValues(alpha: 0.08),
                 borderRadius: borderRadius,
-                border: Border.all(color: C.surfaceBorder, width: 0.5),
+                border: Border.all(color: context.cSurfaceBorder, width: 0.5),
               ),
               padding: const EdgeInsets.symmetric(horizontal: S.m, vertical: S.s),
               child: _TypewriterText(
@@ -341,7 +338,7 @@ class _AuraScreenState extends State<AuraScreen> with TickerProviderStateMixin {
                 animate: m.isNew,
                 onAnimationStarted: () => m.isNew = false,
                 style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      color: C.text,
+                      color: context.cText,
                       height: 1.45,
                     ),
               ),
@@ -405,7 +402,8 @@ class _AuraScreenState extends State<AuraScreen> with TickerProviderStateMixin {
         children: [
           for (int i = 0; i < _quick.length; i++)
             EmotionChip(
-              emoji: _quick[i].emoji,
+              iconData: _quick[i].iconData,
+              iconColor: _quick[i].color,
               label: _quick[i].label,
               color: _quick[i].color,
               isSelected: false,
@@ -436,7 +434,7 @@ class _AuraScreenState extends State<AuraScreen> with TickerProviderStateMixin {
                 TextField(
                   controller: _input,
                   focusNode: _focusNode,
-                  style: const TextStyle(color: C.text),
+                  style: TextStyle(color: context.cText),
                   onChanged: (_) => setState(() {}),
                   decoration: const InputDecoration(
                     hintText: 'Напиши, что чувствуешь…',
@@ -478,7 +476,7 @@ class _AuraScreenState extends State<AuraScreen> with TickerProviderStateMixin {
           height: 44,
           decoration: BoxDecoration(
             gradient: _thinking ? null : C.gradientPrimary,
-            color: _thinking ? C.surfaceLight : null,
+            color: _thinking ? context.cSurfaceLight : null,
             shape: BoxShape.circle,
           ),
           child: Center(
@@ -492,10 +490,10 @@ class _AuraScreenState extends State<AuraScreen> with TickerProviderStateMixin {
               curve: Anim.curve,
               builder: (context, angle, child) =>
                   Transform.rotate(angle: angle, child: child),
-              child: Icon(
-                Icons.send_rounded,
-                color: _thinking ? C.textDim : Colors.white,
+              child: MIcon(
+                MIconType.send,
                 size: 20,
+                color: _thinking ? context.cTextDim : Colors.white,
               ),
             ),
           ),
@@ -566,7 +564,10 @@ class _Avatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AuraAvatar(size: 40, isThinking: isThinking);
+    return Hero(
+      tag: 'aura_avatar',
+      child: AuraAvatar(size: 40, isThinking: isThinking),
+    );
   }
 }
 
@@ -594,20 +595,34 @@ class _TypewriterText extends StatefulWidget {
 class _TypewriterTextState extends State<_TypewriterText> {
   int _charCount = 0;
   bool _complete = false;
+  bool _running = false;
 
   @override
   void initState() {
     super.initState();
-    if (widget.animate) {
-      widget.onAnimationStarted?.call();
-      _runTypewriter();
-    } else {
+    if (!widget.animate) {
       _charCount = widget.text.length;
       _complete = true;
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _complete || _running) return;
+        final reduce = MediaQuery.of(context).disableAnimations;
+        if (reduce) {
+          setState(() {
+            _charCount = widget.text.length;
+            _complete = true;
+          });
+        } else {
+          widget.onAnimationStarted?.call();
+          _runTypewriter();
+        }
+      });
     }
   }
 
   Future<void> _runTypewriter() async {
+    if (_running) return;
+    _running = true;
     for (var i = 1; i <= widget.text.length; i++) {
       await Future.delayed(const Duration(milliseconds: 20));
       if (!mounted) return;
@@ -641,7 +656,18 @@ class _TypingDotsState extends State<_TypingDots>
   late final AnimationController _c = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 1200),
-  )..repeat();
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final reduce = MediaQuery.of(context).disableAnimations;
+    if (!reduce && !_c.isAnimating) {
+      _c.repeat();
+    } else if (reduce && _c.isAnimating) {
+      _c.stop();
+    }
+  }
 
   @override
   void dispose() {
@@ -658,6 +684,8 @@ class _TypingDotsState extends State<_TypingDots>
       bottomRight: Radius.circular(R.l),
     );
 
+    final reduce = MediaQuery.of(context).disableAnimations;
+
     return Row(
       children: [
         const _Avatar(isThinking: true),
@@ -672,9 +700,23 @@ class _TypingDotsState extends State<_TypingDots>
               decoration: BoxDecoration(
                 color: Colors.white.withValues(alpha: 0.08),
                 borderRadius: borderRadius,
-                border: Border.all(color: C.surfaceBorder, width: 0.5),
+                border: Border.all(color: context.cSurfaceBorder, width: 0.5),
               ),
-              child: AnimatedBuilder(
+              child: reduce
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: List.generate(3, (i) => Padding(
+                      padding: const EdgeInsets.only(right: 4),
+                      child: Container(
+                        width: 8, height: 8,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: C.accent.withValues(alpha: 0.6),
+                        ),
+                      ),
+                    )),
+                  )
+                : AnimatedBuilder(
                 animation: _c,
                 builder: (context, _) {
                   return Row(
@@ -724,7 +766,19 @@ class _PulsatingOpacityTextState extends State<_PulsatingOpacityText>
   late final AnimationController _ctrl = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 800),
-  )..repeat(reverse: true);
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final reduce = MediaQuery.of(context).disableAnimations;
+    if (!reduce && !_ctrl.isAnimating) {
+      _ctrl.repeat(reverse: true);
+    } else if (reduce && _ctrl.isAnimating) {
+      _ctrl.stop();
+      _ctrl.value = 1.0;
+    }
+  }
 
   @override
   void dispose() {
@@ -734,6 +788,8 @@ class _PulsatingOpacityTextState extends State<_PulsatingOpacityText>
 
   @override
   Widget build(BuildContext context) {
+    final reduce = MediaQuery.of(context).disableAnimations;
+    if (reduce) return Text(widget.text);
     return AnimatedBuilder(
       animation: _ctrl,
       builder: (context, _) => Opacity(

@@ -1,15 +1,17 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
 import 'package:meditator/app/theme.dart';
+import 'package:meditator/core/subscription/subscription_service.dart';
 import 'package:meditator/shared/utils/accessibility.dart';
+import 'package:meditator/shared/utils/error_handler.dart';
 import 'package:meditator/shared/widgets/custom_icons.dart';
 import 'package:meditator/shared/widgets/glass_card.dart';
 import 'package:meditator/shared/widgets/glow_button.dart';
 import 'package:meditator/shared/widgets/gradient_bg.dart';
-import 'package:meditator/shared/widgets/particle_field.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shimmer/shimmer.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class PaywallScreen extends StatefulWidget {
   const PaywallScreen({super.key});
@@ -20,27 +22,44 @@ class PaywallScreen extends StatefulWidget {
 
 class _PaywallScreenState extends State<PaywallScreen> {
   bool _annual = true;
+  bool _loading = false;
 
   static const _features = [
-    'Безлимитные AI-медитации от Aura',
-    'Расширенная аналитика настроения',
-    'Все дыхательные техники',
-    'Неограниченные партнёры',
-    'Редкие растения для сада',
-    'Офлайн-режим',
+    'AI-медитации от Aura',
+    'Безлимитный доступ к библиотеке',
+    'Детальная аналитика настроения',
   ];
 
   Future<void> _subscribe() async {
-    final p = await SharedPreferences.getInstance();
-    await p.setBool('isPremium', true);
-    if (!mounted) return;
-    context.pop();
+    if (_loading) return;
+    setState(() => _loading = true);
+    try {
+      final plan = _annual ? 'annual' : 'monthly';
+      final url = await SubscriptionService.instance.createPayment(plan);
+      if (url != null && url.isNotEmpty) {
+        final uri = Uri.parse(url);
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+          SubscriptionService.instance.startPolling();
+        }
+      }
+    } on DioException catch (e) {
+      if (mounted) AppError.showDio(e);
+    } catch (_) {
+      if (mounted) AppError.show('Не удалось создать платёж. Попробуйте позже.');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final reduceMotion = AccessibilityUtils.reduceMotion(context);
+    final titleStyle = theme.textTheme.displayMedium?.copyWith(
+      color: Colors.white,
+      height: 1.1,
+    );
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -49,21 +68,13 @@ class _PaywallScreenState extends State<PaywallScreen> {
         intensity: 0.8,
         child: Stack(
           children: [
-            const Positioned.fill(
-              child: ParticleField(
-                count: 30,
-                maxRadius: 2.0,
-                color: C.gold,
-                twinkle: true,
-              ),
-            ),
             Positioned(
               top: S.xs,
               right: S.xs,
               child: IconButton(
                 onPressed: () => context.pop(),
                 tooltip: 'Закрыть',
-                icon: const MIcon(MIconType.close, size: 24, color: C.textSec),
+                icon: MIcon(MIconType.close, size: 24, color: context.cTextSec),
               ),
             ),
             SingleChildScrollView(
@@ -76,21 +87,19 @@ class _PaywallScreenState extends State<PaywallScreen> {
                     child: Text(
                       'Meditator\nPremium',
                       textAlign: TextAlign.center,
-                      style: theme.textTheme.displayLarge?.copyWith(
-                        color: Colors.white,
-                        height: 1.1,
-                      ),
+                      style: titleStyle,
                     ),
                   )
                       .animate()
                       .fadeIn(duration: AccessibilityUtils.adjustedDuration(context, Anim.slow))
                       .scaleXY(
-                          begin: reduceMotion ? 1 : 0.92,
-                          end: 1,
-                          duration: AccessibilityUtils.adjustedDuration(context, Anim.slow),
-                          curve: Anim.curve),
+                        begin: reduceMotion ? 1 : 0.92,
+                        end: 1,
+                        duration: AccessibilityUtils.adjustedDuration(context, Anim.slow),
+                        curve: Anim.curve,
+                      ),
 
-                  const SizedBox(height: S.xl + S.s),
+                  const SizedBox(height: S.xl),
 
                   ...List.generate(_features.length, (i) {
                     return Padding(
@@ -107,8 +116,10 @@ class _PaywallScreenState extends State<PaywallScreen> {
                           Expanded(
                             child: Text(
                               _features[i],
-                              style: theme.textTheme.bodyLarge
-                                  ?.copyWith(height: 1.35),
+                              style: theme.textTheme.bodyLarge?.copyWith(
+                                color: context.cText,
+                                height: 1.35,
+                              ),
                             ),
                           ),
                         ],
@@ -116,8 +127,9 @@ class _PaywallScreenState extends State<PaywallScreen> {
                     )
                         .animate()
                         .fadeIn(
-                            delay: (100 + i * 80).ms,
-                            duration: Anim.normal)
+                          delay: (100 + i * 80).ms,
+                          duration: Anim.normal,
+                        )
                         .slideY(
                           begin: 0.12,
                           end: 0,
@@ -152,7 +164,9 @@ class _PaywallScreenState extends State<PaywallScreen> {
                         child: (reduceMotion
                             ? Container(
                                 padding: const EdgeInsets.symmetric(
-                                    horizontal: S.s, vertical: S.xs),
+                                  horizontal: S.s,
+                                  vertical: S.xs,
+                                ),
                                 decoration: BoxDecoration(
                                   gradient: C.gradientGold,
                                   borderRadius: BorderRadius.circular(R.s),
@@ -170,7 +184,9 @@ class _PaywallScreenState extends State<PaywallScreen> {
                                 highlightColor: C.accentLight,
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(
-                                      horizontal: S.s, vertical: S.xs),
+                                    horizontal: S.s,
+                                    vertical: S.xs,
+                                  ),
                                   decoration: BoxDecoration(
                                     gradient: C.gradientGold,
                                     borderRadius: BorderRadius.circular(R.s),
@@ -191,29 +207,43 @@ class _PaywallScreenState extends State<PaywallScreen> {
                   const SizedBox(height: S.xl),
 
                   GlowButton(
-                    onPressed: _subscribe,
+                    variant: GlowButtonVariant.primary,
+                    onPressed: _loading ? null : _subscribe,
                     width: double.infinity,
-                    showGlow: true,
+                    showGlow: !_loading,
                     semanticLabel: 'Активировать пробный премиум на 7 дней',
-                    child: const Text('Попробовать бесплатно — 7 дней'),
+                    child: _loading
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Text('Попробовать бесплатно — 7 дней'),
                   )
                       .animate()
                       .fadeIn(
-                          delay: 700.ms,
-                          duration: AccessibilityUtils.adjustedDuration(context, Anim.normal))
+                        delay: 700.ms,
+                        duration: AccessibilityUtils.adjustedDuration(context, Anim.normal),
+                      )
                       .slideY(
-                          begin: reduceMotion ? 0 : 0.08,
-                          end: 0,
-                          delay: 700.ms,
-                          duration: AccessibilityUtils.adjustedDuration(context, Anim.normal)),
+                        begin: reduceMotion ? 0 : 0.08,
+                        end: 0,
+                        delay: 700.ms,
+                        duration: AccessibilityUtils.adjustedDuration(context, Anim.normal),
+                      ),
 
                   const SizedBox(height: S.m),
 
                   Text(
                     'Отмена в любое время',
                     textAlign: TextAlign.center,
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: C.textDim, height: 1.4),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: context.cTextSec,
+                      height: 1.4,
+                    ),
                   ).animate().fadeIn(delay: 780.ms, duration: Anim.normal),
                 ],
               ),
@@ -244,49 +274,44 @@ class _PriceCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return AnimatedScale(
-      scale: selected ? 1.02 : 1.0,
-      duration: AccessibilityUtils.adjustedDuration(context, Anim.fast),
-      curve: Anim.curve,
-      child: GlassCard(
-        onTap: onTap,
-        showGlow: selected,
-        glowColor: highlight ? C.gold.withValues(alpha: 0.4) : C.glowPrimary,
-        showBorder: selected,
-        opacity: selected ? 0.12 : 0.06,
-        semanticLabel:
-            '$title, $price${selected ? ', выбран тариф' : ''}',
-        child: Row(
-          children: [
-            Icon(
-              selected
-                  ? Icons.radio_button_checked
-                  : Icons.radio_button_off,
-              color: selected ? C.primary : C.textDim,
-            ),
-            const SizedBox(width: S.m),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: theme.textTheme.titleMedium
-                        ?.copyWith(fontWeight: FontWeight.w600),
+    return GlassCard(
+      variant: selected ? GlassCardVariant.glass : GlassCardVariant.surface,
+      onTap: onTap,
+      showGlow: selected,
+      glowColor: highlight ? C.gold.withValues(alpha: 0.4) : C.glowPrimary,
+      showBorder: selected,
+      opacity: selected ? 0.12 : 0.08,
+      semanticLabel: '$title, $price${selected ? ', выбран тариф' : ''}',
+      child: Row(
+        children: [
+          Icon(
+            selected ? Icons.radio_button_checked : Icons.radio_button_off,
+            color: selected ? C.primary : context.cTextDim,
+          ),
+          const SizedBox(width: S.m),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: context.cText,
                   ),
-                  const SizedBox(height: S.xs),
-                  Text(
-                    price,
-                    style: theme.textTheme.bodyLarge?.copyWith(
-                      color: highlight && selected ? C.accent : C.textSec,
-                      fontWeight: FontWeight.w600,
-                    ),
+                ),
+                const SizedBox(height: S.xs),
+                Text(
+                  price,
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    color: highlight && selected ? C.accent : context.cTextSec,
+                    fontWeight: FontWeight.w600,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

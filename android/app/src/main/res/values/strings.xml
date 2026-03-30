@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="meditator_widget_description">Серия, цитата дня и быстрый старт медитации</string>
+    <string name="shortcut_meditate">Медитация</string>
+    <string name="shortcut_meditate_long">Начать AI-медитацию</string>
+    <string name="shortcut_breathe">Дыхание</string>
+    <string name="shortcut_breathe_long">Дыхательное упражнение</string>
+    <string name="shortcut_timer">Таймер</string>
+    <string name="shortcut_timer_long">Таймер медитации</string>
+</resources>

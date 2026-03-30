@@ -3,15 +3,17 @@ import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
 import 'package:meditator/app/theme.dart';
+import 'package:meditator/core/auth/auth_service.dart';
+import 'package:meditator/core/database/db.dart';
 import 'package:meditator/shared/models/breathing.dart' as m;
 import 'package:meditator/shared/widgets/animated_number.dart';
 import 'package:meditator/shared/widgets/breathing_ring.dart';
 import 'package:meditator/shared/widgets/celebration_overlay.dart';
 import 'package:meditator/shared/widgets/custom_icons.dart';
+import 'package:meditator/shared/widgets/drag_dismiss.dart';
 import 'package:meditator/shared/widgets/glow_button.dart';
 import 'package:meditator/shared/widgets/gradient_bg.dart';
 import 'package:meditator/shared/widgets/particle_field.dart';
-
 class BreathingSessionScreen extends StatefulWidget {
   const BreathingSessionScreen({super.key, required this.exerciseId});
 
@@ -63,6 +65,7 @@ class _BreathingSessionScreenState extends State<BreathingSessionScreen> {
       onFinished: () {
         if (!mounted) return;
         HapticFeedback.heavyImpact();
+        _recordBreathingSession();
         setState(() {
           _done = true;
           _showConfetti = true;
@@ -75,6 +78,21 @@ class _BreathingSessionScreenState extends State<BreathingSessionScreen> {
   void _onTick() {
     if (_ctrl.isFinished && !_done) setState(() => _done = true);
     setState(() {});
+  }
+
+  Future<void> _recordBreathingSession() async {
+    final uid = AuthService.instance.userId;
+    if (uid == null) return;
+    final totalSec = _ex.phases.fold<int>(0, (s, p) => s + p.seconds) * _ex.cycles;
+    if (totalSec <= 0) return;
+    try {
+      await Db.instance.insertSession({
+        'user_id': uid,
+        'duration_seconds': totalSec,
+        'completed': true,
+        'created_at': DateTime.now().toUtc().toIso8601String(),
+      });
+    } catch (_) {}
   }
 
   @override
@@ -101,20 +119,27 @@ class _BreathingSessionScreenState extends State<BreathingSessionScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: GradientBg(
-        showStars: true,
-        showAurora: true,
-        intensity: 0.5,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            const Positioned.fill(
-              child: ParticleField(count: 40, twinkle: true),
-            ),
-            if (_showConfetti) const CelebrationOverlay(),
-            _done ? _buildDone(context) : _buildSession(context),
-          ],
+    return DragDismiss(
+      onDismiss: () {
+        _ctrl.pause();
+        if (mounted) context.pop();
+      },
+      enabled: !_done,
+      child: Scaffold(
+        body: GradientBg(
+          showStars: true,
+          showAurora: true,
+          intensity: 0.5,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              const Positioned.fill(
+                child: ParticleField(count: 40, twinkle: true),
+              ),
+              if (_showConfetti) const CelebrationOverlay(),
+              _done ? _buildDone(context) : _buildSession(context),
+            ],
+          ),
         ),
       ),
     );
@@ -124,125 +149,197 @@ class _BreathingSessionScreenState extends State<BreathingSessionScreen> {
     final tt = Theme.of(context).textTheme;
     final completed = _done ? _ex.cycles : _cycleDisplay - 1;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(S.s, S.s, S.m, 0),
-          child: Row(
-            children: [
-              IconButton(
-                icon: const MIcon(MIconType.close, size: 24, color: C.text),
-                tooltip: 'Закрыть сессию',
-                onPressed: () => context.pop(),
-              ),
-            ],
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: S.l),
-          child: Text(_ex.name, style: tt.headlineMedium)
-              .animate()
-              .fadeIn(duration: Anim.normal),
-        ),
-        const Spacer(),
-        Center(
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: List.generate(_ex.cycles, (i) {
-              final isFilled = i < completed;
-              final isCurrent = i == completed && !_done;
-              return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: AnimatedContainer(
-                  duration: Anim.normal,
-                  curve: Anim.curve,
-                  width: isCurrent ? 10 : 8,
-                  height: isCurrent ? 10 : 8,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: isFilled ? C.gradientPrimary : null,
-                    color: isFilled ? null : Colors.transparent,
-                    border: isFilled
-                        ? null
-                        : Border.all(
-                            color: isCurrent
-                                ? _ex.color.withValues(alpha: 0.8)
-                                : C.textDim.withValues(alpha: 0.4),
-                            width: 1.5,
-                          ),
-                    boxShadow: isFilled
-                        ? [
-                            BoxShadow(
-                              color: C.primary.withValues(alpha: 0.4),
-                              blurRadius: 6,
-                            ),
-                          ]
-                        : null,
-                  ),
+    return SafeArea(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(S.s, S.s, S.m, 0),
+            child: Row(
+              children: [
+                IconButton(
+                  icon: MIcon(MIconType.close, size: 24, color: context.cText),
+                  tooltip: 'Закрыть сессию',
+                  onPressed: () => context.pop(),
                 ),
-              );
-            }),
+              ],
+            ),
           ),
-        ),
-        const SizedBox(height: S.l),
-        Center(
-          child: BreathingRing(
-            phases: _ctrl.phases,
-            cycles: _ex.cycles,
-            size: 280,
-            controller: _ctrl,
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: S.l),
+            child: Text(_ex.name, style: tt.headlineMedium)
+                .animate()
+                .fadeIn(duration: Anim.normal),
           ),
-        ),
-        const Spacer(),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(S.l, S.m, S.l, S.xl),
-          child: GlowButton(
-            onPressed: _toggleRun,
-            width: double.infinity,
-            showGlow: true,
-            glowColor: _ctrl.isRunning ? C.glowPrimary : C.glowAccent,
-            semanticLabel: _ctrl.isRunning
-                ? 'Поставить дыхание на паузу'
-                : 'Запустить дыхательную сессию',
-            child: Text(_ctrl.isRunning ? 'Пауза' : 'Старт'),
+          const SizedBox(height: S.m),
+          Center(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: List.generate(_ex.cycles, (i) {
+                final isFilled = i < completed;
+                final isCurrent = i == completed && !_done;
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: AnimatedContainer(
+                    duration: Anim.normal,
+                    curve: Anim.curve,
+                    width: isCurrent ? 10 : 8,
+                    height: isCurrent ? 10 : 8,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: isFilled ? C.gradientPrimary : null,
+                      color: isFilled ? null : Colors.transparent,
+                      border: isFilled
+                          ? null
+                          : Border.all(
+                              color: isCurrent
+                                  ? _ex.color.withValues(alpha: 0.8)
+                                  : context.cTextDim.withValues(alpha: 0.4),
+                              width: 1.5,
+                            ),
+                      boxShadow: isFilled
+                          ? [
+                              BoxShadow(
+                                color: C.primary.withValues(alpha: 0.4),
+                                blurRadius: 6,
+                              ),
+                            ]
+                          : null,
+                    ),
+                  ),
+                );
+              }),
+            ),
           ),
-        ),
-      ],
+          const SizedBox(height: S.s),
+          Expanded(
+            child: Center(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final ringSize = (constraints.maxHeight * 0.85).clamp(120.0, 240.0);
+                  return BreathingRing(
+                    phases: _ctrl.phases,
+                    cycles: _ex.cycles,
+                    size: ringSize,
+                    controller: _ctrl,
+                  );
+                },
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(S.l, S.m, S.l, S.l),
+            child: GlowButton(
+              onPressed: _toggleRun,
+              width: double.infinity,
+              showGlow: true,
+              glowColor: _ctrl.isRunning ? C.glowPrimary : C.glowAccent,
+              semanticLabel: _ctrl.isRunning
+                  ? 'Поставить дыхание на паузу'
+                  : 'Запустить дыхательную сессию',
+              child: Text(_ctrl.isRunning ? 'Пауза' : 'Старт'),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildDone(BuildContext context) {
-    final tt = Theme.of(context).textTheme;
     final totalMin = (_totalSeconds / 60).ceil().clamp(1, 999);
 
-    return Padding(
-      padding: const EdgeInsets.all(S.l),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 60,
-            height: 60,
-            decoration: const BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: C.gradientPrimary,
+    return SafeArea(
+      child: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(S.l),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+          SizedBox(
+            width: 140,
+            height: 140,
+            child: Stack(
+              alignment: Alignment.center,
+              clipBehavior: Clip.none,
+              children: [
+                IgnorePointer(
+                  child: Container(
+                    width: 104,
+                    height: 104,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.transparent,
+                      boxShadow: [
+                        BoxShadow(
+                          color: C.primary.withValues(alpha: 0.58),
+                          blurRadius: 48,
+                          spreadRadius: 8,
+                        ),
+                        BoxShadow(
+                          color: C.accent.withValues(alpha: 0.42),
+                          blurRadius: 32,
+                          spreadRadius: 4,
+                        ),
+                      ],
+                    ),
+                  )
+                      .animate(onPlay: (c) => c.repeat(reverse: true))
+                      .scale(
+                        begin: const Offset(0.78, 0.78),
+                        end: const Offset(1.22, 1.22),
+                        duration: 1700.ms,
+                        curve: Curves.easeInOutCubic,
+                      ),
+                ),
+                IgnorePointer(
+                  child: Container(
+                    width: 88,
+                    height: 88,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(
+                        colors: [
+                          C.accent.withValues(alpha: 0.45),
+                          C.primary.withValues(alpha: 0.22),
+                          Colors.transparent,
+                        ],
+                        stops: const [0.0, 0.42, 1.0],
+                      ),
+                    ),
+                  )
+                      .animate(onPlay: (c) => c.repeat(reverse: true))
+                      .scale(
+                        begin: const Offset(1.08, 1.08),
+                        end: const Offset(0.86, 0.86),
+                        duration: 1300.ms,
+                        curve: Curves.easeInOut,
+                      ),
+                ),
+                Container(
+                  width: 60,
+                  height: 60,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: C.gradientPrimary,
+                  ),
+                  child: const MIcon(MIconType.check, size: 32, color: Colors.white),
+                )
+                    .animate()
+                    .scale(
+                      begin: const Offset(0, 0),
+                      end: const Offset(1, 1),
+                      duration: Anim.dramatic,
+                      curve: Anim.curveGentle,
+                    )
+                    .fadeIn(duration: Anim.slow),
+              ],
             ),
-            child: const MIcon(MIconType.check, size: 32, color: Colors.white),
-          )
-              .animate()
-              .scale(
-                begin: const Offset(0, 0),
-                end: const Offset(1, 1),
-                duration: Anim.dramatic,
-                curve: Anim.curveSpring,
-              )
-              .fadeIn(duration: Anim.slow),
+          ),
           const SizedBox(height: S.l),
           Text(
             'Ты сделал это',
             textAlign: TextAlign.center,
-            style: tt.displayMedium,
+            style: Theme.of(context).textTheme.displayMedium,
           )
               .animate()
               .fadeIn(delay: 200.ms, duration: Anim.slow)
@@ -257,7 +354,7 @@ class _BreathingSessionScreenState extends State<BreathingSessionScreen> {
           Text(
             'Несколько циклов осознанного дыхания — уже победа',
             textAlign: TextAlign.center,
-            style: tt.bodyLarge?.copyWith(color: C.textSec, height: 1.5),
+            style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: context.cTextSec, height: 1.5),
           ).animate().fadeIn(delay: 350.ms, duration: Anim.slow),
           const SizedBox(height: S.xl),
           Row(
@@ -286,6 +383,8 @@ class _BreathingSessionScreenState extends State<BreathingSessionScreen> {
           ).animate().fadeIn(delay: 600.ms, duration: Anim.normal),
         ],
       ),
+        ),
+      ),
     );
   }
 }
@@ -308,11 +407,11 @@ class _StatTile extends StatelessWidget {
       children: [
         AnimatedNumber(
           value: value,
-          style: tt.headlineLarge?.copyWith(color: C.text),
+          style: tt.headlineLarge,
           suffix: suffix,
         ),
         const SizedBox(height: S.xs),
-        Text(label, style: tt.bodySmall?.copyWith(color: C.textSec)),
+        Text(label, style: tt.bodySmall?.copyWith(color: context.cTextSec)),
       ],
     );
   }

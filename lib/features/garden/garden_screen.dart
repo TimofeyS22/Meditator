@@ -1,10 +1,14 @@
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:go_router/go_router.dart';
 import 'package:meditator/app/theme.dart';
+import 'package:meditator/core/auth/auth_service.dart';
 import 'package:meditator/core/database/db.dart';
+import 'package:meditator/core/subscription/subscription_service.dart';
 import 'package:meditator/shared/models/garden.dart';
 import 'package:meditator/shared/widgets/animated_number.dart';
 import 'package:meditator/shared/widgets/celebration_overlay.dart';
@@ -13,8 +17,31 @@ import 'package:meditator/shared/widgets/glass_card.dart';
 import 'package:meditator/shared/widgets/glow_button.dart';
 import 'package:meditator/shared/widgets/gradient_bg.dart';
 import 'package:meditator/shared/utils/accessibility.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:meditator/shared/widgets/skeleton_placeholders.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
+
+const _kLocalGardenKey = 'meditator_local_garden';
+
+enum _GardenWeather {
+  sunny(label: 'Солнечно', icon: Icons.wb_sunny_outlined),
+  clear(label: 'Ясно', icon: Icons.nights_stay_outlined),
+  cloudy(label: 'Облачно', icon: Icons.cloud_outlined),
+  rain(label: 'Дождь', icon: Icons.grain),
+  storm(label: 'Шторм', icon: Icons.thunderstorm_outlined);
+
+  const _GardenWeather({required this.label, required this.icon});
+  final String label;
+  final IconData icon;
+
+  Color get tintColor => switch (this) {
+    _GardenWeather.sunny => const Color(0xFFFFD54F),
+    _GardenWeather.clear => C.accent,
+    _GardenWeather.cloudy => const Color(0xFF90A4AE),
+    _GardenWeather.rain => const Color(0xFF64B5F6),
+    _GardenWeather.storm => const Color(0xFFEF5350),
+  };
+}
 
 GardenPlant _plantFromRow(Map<String, dynamic> row) {
   return GardenPlant.fromJson({
@@ -44,6 +71,9 @@ class _GardenScreenState extends State<GardenScreen>
   bool _loading = true;
   bool _showPlantConfetti = false;
   late final AnimationController _starCtrl;
+  late final AnimationController _weatherCtrl;
+  _GardenWeather _weather = _GardenWeather.clear;
+  String _moodLabel = '';
 
   @override
   void initState() {
@@ -52,13 +82,53 @@ class _GardenScreenState extends State<GardenScreen>
       vsync: this,
       duration: const Duration(seconds: 20),
     )..repeat();
+    _weatherCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 8),
+    )..repeat();
     _load();
+    _loadMoodWeather();
   }
 
   @override
   void dispose() {
     _starCtrl.dispose();
+    _weatherCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadMoodWeather() async {
+    final uid = AuthService.instance.userId;
+    if (uid == null || uid.isEmpty) return;
+    try {
+      final entries = await Db.instance.getMoodEntries(uid, limit: 5);
+      if (entries.isEmpty || !mounted) return;
+      final latest = entries.first;
+      final emotion = (latest['primary_emotion'] ?? latest['primaryEmotion'] ?? '') as String;
+      final intensity = ((latest['intensity'] ?? 3) as num).toInt();
+      final w = _weatherFromMood(emotion.toLowerCase(), intensity);
+      if (mounted) {
+        setState(() {
+          _weather = w;
+          _moodLabel = emotion;
+        });
+      }
+    } catch (_) {}
+  }
+
+  static _GardenWeather _weatherFromMood(String emotion, int intensity) {
+    const stormEmotions = ['тревога', 'злость', 'гнев', 'страх', 'паника'];
+    const rainEmotions = ['грусть', 'печаль', 'усталость', 'разочарование'];
+    const cloudyEmotions = ['скука', 'безразличие', 'напряжение', 'сомнение'];
+    const sunnyEmotions = ['радость', 'счастье', 'восторг', 'благодарность', 'вдохновение', 'любовь'];
+
+    if (stormEmotions.any(emotion.contains) && intensity >= 4) return _GardenWeather.storm;
+    if (stormEmotions.any(emotion.contains)) return _GardenWeather.rain;
+    if (rainEmotions.any(emotion.contains)) return _GardenWeather.rain;
+    if (cloudyEmotions.any(emotion.contains)) return _GardenWeather.cloudy;
+    if (sunnyEmotions.any(emotion.contains)) return _GardenWeather.sunny;
+    if (intensity <= 2) return _GardenWeather.cloudy;
+    return _GardenWeather.clear;
   }
 
   // ---------------------------------------------------------------------------
@@ -66,25 +136,45 @@ class _GardenScreenState extends State<GardenScreen>
   // ---------------------------------------------------------------------------
 
   Future<void> _load() async {
-    final uid = Supabase.instance.client.auth.currentUser?.id;
-    if (uid == null) {
-      setState(() {
-        _loading = false;
-        _plants = [];
-      });
-      return;
-    }
     setState(() => _loading = true);
-    try {
-      final rows = await Db.instance.getGarden(uid);
-      if (!mounted) return;
-      setState(() {
-        _plants = rows.map(_plantFromRow).toList();
-        _loading = false;
-      });
-    } catch (_) {
-      if (mounted) setState(() => _loading = false);
+    final uid = AuthService.instance.userId;
+
+    if (uid != null && uid.isNotEmpty) {
+      try {
+        final rows = await Db.instance.getGarden(uid);
+        if (!mounted) return;
+        setState(() {
+          _plants = rows.map(_plantFromRow).toList();
+          _loading = false;
+        });
+        return;
+      } catch (_) {}
     }
+
+    // Fallback: local storage
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_kLocalGardenKey);
+      if (raw != null && raw.isNotEmpty) {
+        final list = jsonDecode(raw) as List<dynamic>;
+        if (!mounted) return;
+        setState(() {
+          _plants = list
+              .map((e) => GardenPlant.fromJson(Map<String, dynamic>.from(e as Map)))
+              .toList();
+          _loading = false;
+        });
+        return;
+      }
+    } catch (_) {}
+
+    if (mounted) setState(() { _plants = []; _loading = false; });
+  }
+
+  Future<void> _saveLocal() async {
+    final prefs = await SharedPreferences.getInstance();
+    final json = _plants.map((p) => p.toJson()).toList();
+    await prefs.setString(_kLocalGardenKey, jsonEncode(json));
   }
 
   int get _blooming =>
@@ -97,21 +187,37 @@ class _GardenScreenState extends State<GardenScreen>
   }
 
   Future<void> _plant(PlantType type) async {
-    final uid = Supabase.instance.client.auth.currentUser?.id;
-    if (uid == null) return;
+    final uid = AuthService.instance.userId;
     final rnd = math.Random();
+    final plantData = {
+      'id': const Uuid().v4(),
+      'user_id': uid ?? 'local',
+      'type': type.name,
+      'stage': GrowthStage.seed.name,
+      'water_count': 0,
+      'health_level': 1.0,
+      'pos_x': 0.15 + rnd.nextDouble() * 0.65,
+      'pos_y': 0.2 + rnd.nextDouble() * 0.55,
+      'planted_at': DateTime.now().toIso8601String(),
+    };
+
     try {
-      await Db.instance.insertPlant({
-        'id': const Uuid().v4(),
-        'user_id': uid,
-        'type': type.name,
-        'stage': GrowthStage.seed.name,
-        'water_count': 0,
-        'health_level': 1.0,
-        'pos_x': 0.15 + rnd.nextDouble() * 0.65,
-        'pos_y': 0.2 + rnd.nextDouble() * 0.55,
-        'planted_at': DateTime.now().toIso8601String(),
-      });
+      if (uid != null && uid.isNotEmpty) {
+        await Db.instance.insertPlant(plantData);
+      } else {
+        final plant = GardenPlant.fromJson({
+          ...plantData,
+          'userId': plantData['user_id'],
+          'waterCount': plantData['water_count'],
+          'healthLevel': plantData['health_level'],
+          'posX': plantData['pos_x'],
+          'posY': plantData['pos_y'],
+          'plantedAt': plantData['planted_at'],
+        });
+        _plants.add(plant);
+        await _saveLocal();
+      }
+
       if (mounted) {
         setState(() => _showPlantConfetti = true);
         Future.delayed(const Duration(milliseconds: 2500), () {
@@ -176,8 +282,7 @@ class _GardenScreenState extends State<GardenScreen>
                         p.type.nameRu,
                         style: Theme.of(ctx)
                             .textTheme
-                            .titleLarge
-                            ?.copyWith(color: C.text),
+                            .titleLarge,
                       ),
                     ),
                   ],
@@ -196,7 +301,7 @@ class _GardenScreenState extends State<GardenScreen>
                   borderRadius: BorderRadius.circular(R.s),
                   child: LinearProgressIndicator(
                     value: p.healthLevel,
-                    backgroundColor: C.surfaceLight,
+                    backgroundColor: ctx.cSurfaceLight,
                     valueColor: AlwaysStoppedAnimation(
                       Color.lerp(C.rose, C.accent, p.healthLevel)!,
                     ),
@@ -235,8 +340,12 @@ class _GardenScreenState extends State<GardenScreen>
           maxChildSize: 0.9,
           minChildSize: 0.35,
           builder: (_, scroll) {
-            return GlassCard(
-              showBorder: true,
+            return Container(
+              decoration: BoxDecoration(
+                color: ctx.cSurface,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(R.xl)),
+                border: Border.all(color: ctx.cSurfaceBorder),
+              ),
               padding: const EdgeInsets.only(top: S.m),
               child: ListView(
                 controller: scroll,
@@ -248,7 +357,7 @@ class _GardenScreenState extends State<GardenScreen>
                       height: 4,
                       margin: const EdgeInsets.only(bottom: S.m),
                       decoration: BoxDecoration(
-                        color: C.textDim,
+                        color: ctx.cTextDim,
                         borderRadius: BorderRadius.circular(R.full),
                       ),
                     ),
@@ -257,8 +366,7 @@ class _GardenScreenState extends State<GardenScreen>
                     'Выбери растение',
                     style: Theme.of(ctx)
                         .textTheme
-                        .titleMedium
-                        ?.copyWith(color: C.text),
+                        .titleMedium,
                   ),
                   const SizedBox(height: S.m),
                   for (var i = 0; i < PlantType.values.length; i++)
@@ -276,8 +384,20 @@ class _GardenScreenState extends State<GardenScreen>
     return Padding(
       padding: const EdgeInsets.only(bottom: S.s),
       child: GlassCard(
-        onTap: () => _plant(type),
+        onTap: () {
+          if (type.isPremium && !SubscriptionService.instance.isPremium.value) {
+            Navigator.pop(ctx);
+            context.push('/paywall');
+            return;
+          }
+          _plant(type);
+        },
         showBorder: true,
+        showAnimatedBorder: type.isPremium,
+        borderGradientColors: type.isPremium
+            ? const [C.gold, C.warm, C.gold, C.warm]
+            : null,
+        showLightSweep: true,
         padding: const EdgeInsets.all(S.m),
         child: Row(
           children: [
@@ -321,8 +441,7 @@ class _GardenScreenState extends State<GardenScreen>
                           type.nameRu,
                           style: Theme.of(ctx)
                               .textTheme
-                              .titleSmall
-                              ?.copyWith(color: C.text),
+                              .titleSmall,
                         ),
                       ),
                       if (type.isPremium) ...[
@@ -335,7 +454,6 @@ class _GardenScreenState extends State<GardenScreen>
                   Text(
                     type.description,
                     style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
-                          color: C.textDim,
                           height: 1.35,
                         ),
                   ),
@@ -362,11 +480,12 @@ class _GardenScreenState extends State<GardenScreen>
         child: Stack(
           children: [
             if (_loading)
-              const Center(
-                child: CircularProgressIndicator(color: C.primary),
-              )
+              const GardenSkeleton()
             else
-              Column(
+              RefreshIndicator(
+                color: C.accent,
+                onRefresh: _load,
+                child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Padding(
@@ -375,8 +494,7 @@ class _GardenScreenState extends State<GardenScreen>
                       'Твой сад',
                       style: Theme.of(context)
                           .textTheme
-                          .headlineMedium
-                          ?.copyWith(color: C.text),
+                          .headlineMedium,
                     ).animate().fadeIn(duration: Anim.normal),
                   ),
                   _buildStats(),
@@ -395,13 +513,17 @@ class _GardenScreenState extends State<GardenScreen>
                                 RepaintBoundary(
                                   child: ListenableBuilder(
                                     listenable: _starCtrl,
-                                    builder: (_, __) => CustomPaint(
+                                    builder: (_, _) => CustomPaint(
                                       painter: _StarryPainter(
                                         seed: 42,
                                         animValue: _starCtrl.value,
                                       ),
                                     ),
                                   ),
+                                ),
+                                _WeatherOverlay(
+                                  weather: _weather,
+                                  animation: _weatherCtrl,
                                 ),
                                 if (_plants.isEmpty)
                                   Center(
@@ -422,10 +544,10 @@ class _GardenScreenState extends State<GardenScreen>
                                         Text(
                                           'Посади первое растение',
                                           textAlign: TextAlign.center,
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .bodyLarge
-                                              ?.copyWith(color: C.textSec),
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodyLarge
+                              ?.copyWith(color: context.cTextSec),
                                         ),
                                       ],
                                     ),
@@ -445,7 +567,7 @@ class _GardenScreenState extends State<GardenScreen>
                                         .scale(
                                           begin: const Offset(0.85, 0.85),
                                           end: const Offset(1, 1),
-                                          curve: Anim.curveSpring,
+                                          curve: Anim.curveGentle,
                                         ),
                               ],
                             );
@@ -454,8 +576,9 @@ class _GardenScreenState extends State<GardenScreen>
                       ),
                     ).animate(delay: 250.ms).fadeIn(duration: Anim.normal),
                   ),
-                  const SizedBox(height: 80),
-                ],
+                const SizedBox(height: 120),
+              ],
+              ),
               ),
             if (_showPlantConfetti)
               const Positioned.fill(
@@ -463,7 +586,7 @@ class _GardenScreenState extends State<GardenScreen>
               ),
             Positioned(
               right: S.m,
-              bottom: S.l,
+              bottom: 100,
               child: GlowButton(
                 onPressed: _openPlantPicker,
                 showGlow: _plants.isEmpty && !_loading,
@@ -481,7 +604,7 @@ class _GardenScreenState extends State<GardenScreen>
               )
                   .animate()
                   .fadeIn(delay: 300.ms)
-                  .slideY(begin: 0.3, end: 0, curve: Anim.curveSpring),
+                  .slideY(begin: 0.3, end: 0, curve: Anim.curveGentle),
             ),
           ],
         ),
@@ -492,44 +615,75 @@ class _GardenScreenState extends State<GardenScreen>
   Widget _buildStats() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: S.m),
-      child: Row(
+      child: Column(
         children: [
-          Expanded(
-            child: _StatChip(
-              icon: MIcon(MIconType.park, size: 20, color: Colors.white),
-              label: 'Всего',
-              numValue: _plants.length,
-            ).animate(delay: 100.ms).fadeIn().slideY(
-                  begin: 0.15,
-                  end: 0,
-                  curve: Anim.curve,
-                ),
-          ),
-          const SizedBox(width: S.s),
-          Expanded(
-            child: _StatChip(
-              icon: MIcon(MIconType.florist, size: 20, color: Colors.white),
-              label: 'Цветут',
-              numValue: _blooming,
-            ).animate(delay: 150.ms).fadeIn().slideY(
-                  begin: 0.15,
-                  end: 0,
-                  curve: Anim.curve,
-                ),
-          ),
-          const SizedBox(width: S.s),
-          Expanded(
-            child: _StatChip(
-              icon: MIcon(MIconType.heart, size: 20, color: Colors.white),
-              label: 'Здоровье',
-              numValue:
-                  _plants.isEmpty ? null : (_avgHealth * 100).round(),
-              suffix: '%',
-            ).animate(delay: 200.ms).fadeIn().slideY(
-                  begin: 0.15,
-                  end: 0,
-                  curve: Anim.curve,
-                ),
+          if (_moodLabel.isNotEmpty)
+            GlassCard(
+              showBorder: true,
+              padding: const EdgeInsets.symmetric(horizontal: S.m, vertical: S.s),
+              child: Row(
+                children: [
+                  Icon(_weather.icon, color: _weather.tintColor, size: 22),
+                  const SizedBox(width: S.s),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Погода в мире: ${_weather.label}',
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: context.cText),
+                        ),
+                        Text(
+                          'На основе твоего настроения: $_moodLabel',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ).animate(delay: 60.ms).fadeIn().slideY(begin: 0.08, curve: Anim.curve),
+          if (_moodLabel.isNotEmpty) const SizedBox(height: S.s),
+          Row(
+            children: [
+              Expanded(
+                child: _StatChip(
+                  icon: MIcon(MIconType.park, size: 20, color: Colors.white),
+                  label: 'Всего',
+                  numValue: _plants.length,
+                ).animate(delay: 100.ms).fadeIn().slideY(
+                      begin: 0.15,
+                      end: 0,
+                      curve: Anim.curve,
+                    ),
+              ),
+              const SizedBox(width: S.s),
+              Expanded(
+                child: _StatChip(
+                  icon: MIcon(MIconType.florist, size: 20, color: Colors.white),
+                  label: 'Цветут',
+                  numValue: _blooming,
+                ).animate(delay: 150.ms).fadeIn().slideY(
+                      begin: 0.15,
+                      end: 0,
+                      curve: Anim.curve,
+                    ),
+              ),
+              const SizedBox(width: S.s),
+              Expanded(
+                child: _StatChip(
+                  icon: MIcon(MIconType.heart, size: 20, color: Colors.white),
+                  label: 'Здоровье',
+                  numValue:
+                      _plants.isEmpty ? null : (_avgHealth * 100).round(),
+                  suffix: '%',
+                ).animate(delay: 200.ms).fadeIn().slideY(
+                      begin: 0.15,
+                      end: 0,
+                      curve: Anim.curve,
+                    ),
+              ),
+            ],
           ),
         ],
       ),
@@ -556,13 +710,12 @@ class _DetailRow extends StatelessWidget {
           label,
           style: Theme.of(context)
               .textTheme
-              .bodyMedium
-              ?.copyWith(color: C.textSec),
+              .bodyMedium,
         ),
         Text(
           value,
           style:
-              Theme.of(context).textTheme.bodyMedium?.copyWith(color: C.text),
+              Theme.of(context).textTheme.bodyMedium?.copyWith(color: context.cText),
         ),
       ],
     );
@@ -591,6 +744,7 @@ class _StatChip extends StatelessWidget {
     final ts = Theme.of(context).textTheme;
     return GlassCard(
       showBorder: true,
+      showLightSweep: true,
       padding: const EdgeInsets.symmetric(vertical: S.s, horizontal: S.s),
       child: Column(
         children: [
@@ -603,11 +757,11 @@ class _StatChip extends StatelessWidget {
             AnimatedNumber(
               value: numValue!,
               suffix: suffix,
-              style: ts.titleMedium?.copyWith(color: C.text),
+              style: ts.titleMedium,
             )
           else
-            Text('—', style: ts.titleMedium?.copyWith(color: C.text)),
-          Text(label, style: ts.bodySmall?.copyWith(color: C.textDim)),
+            Text('—', style: ts.titleMedium),
+          Text(label, style: ts.bodySmall),
         ],
       ),
     );
@@ -654,7 +808,7 @@ class _PlantDotState extends State<_PlantDot> with TickerProviderStateMixin {
     _tapCurve = CurvedAnimation(
       parent: _tapCtrl,
       curve: Curves.easeIn,
-      reverseCurve: Curves.easeOutBack,
+      reverseCurve: Anim.curveGentle,
     );
 
     _glowCtrl = AnimationController(
@@ -1353,6 +1507,119 @@ class _StarryPainter extends CustomPainter {
 // ==========================================================================
 // Premium badge with animated shimmer
 // ==========================================================================
+
+class _WeatherOverlay extends StatelessWidget {
+  const _WeatherOverlay({required this.weather, required this.animation});
+  final _GardenWeather weather;
+  final AnimationController animation;
+
+  @override
+  Widget build(BuildContext context) {
+    if (weather == _GardenWeather.clear) return const SizedBox.shrink();
+
+    return ListenableBuilder(
+      listenable: animation,
+      builder: (context, _) {
+        return CustomPaint(
+          size: Size.infinite,
+          painter: _WeatherPainter(weather: weather, t: animation.value),
+        );
+      },
+    );
+  }
+}
+
+class _WeatherPainter extends CustomPainter {
+  _WeatherPainter({required this.weather, required this.t});
+  final _GardenWeather weather;
+  final double t;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    switch (weather) {
+      case _GardenWeather.sunny:
+        _paintSunny(canvas, size);
+      case _GardenWeather.cloudy:
+        _paintCloudy(canvas, size);
+      case _GardenWeather.rain:
+        _paintRain(canvas, size);
+      case _GardenWeather.storm:
+        _paintStorm(canvas, size);
+      case _GardenWeather.clear:
+        break;
+    }
+  }
+
+  void _paintSunny(Canvas canvas, Size size) {
+    final cx = size.width * 0.8;
+    final cy = size.height * 0.08;
+    final r = 30.0 + 4 * math.sin(t * 2 * math.pi);
+    final alpha = 0.15 + 0.05 * math.sin(t * 2 * math.pi);
+    canvas.drawCircle(
+      Offset(cx, cy),
+      r * 2,
+      Paint()
+        ..color = const Color(0xFFFFD54F).withValues(alpha: alpha)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 30),
+    );
+    canvas.drawCircle(
+      Offset(cx, cy),
+      r,
+      Paint()..color = const Color(0xFFFFD54F).withValues(alpha: 0.3),
+    );
+  }
+
+  void _paintCloudy(Canvas canvas, Size size) {
+    final rnd = math.Random(42);
+    for (var i = 0; i < 5; i++) {
+      final cx = rnd.nextDouble() * size.width;
+      final cy = size.height * (0.02 + rnd.nextDouble() * 0.12);
+      final w = 60.0 + rnd.nextDouble() * 80;
+      final h = 20.0 + rnd.nextDouble() * 15;
+      final drift = math.sin(t * 2 * math.pi + i) * 10;
+      canvas.drawOval(
+        Rect.fromCenter(center: Offset(cx + drift, cy), width: w, height: h),
+        Paint()
+          ..color = const Color(0xFF90A4AE).withValues(alpha: 0.08)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12),
+      );
+    }
+  }
+
+  void _paintRain(Canvas canvas, Size size) {
+    _paintCloudy(canvas, size);
+    final rnd = math.Random(77);
+    final rainPaint = Paint()
+      ..color = const Color(0xFF64B5F6).withValues(alpha: 0.2)
+      ..strokeWidth = 1.0
+      ..strokeCap = StrokeCap.round;
+    for (var i = 0; i < 40; i++) {
+      final x = rnd.nextDouble() * size.width;
+      final speed = 0.3 + rnd.nextDouble() * 0.7;
+      final y = ((t * speed + rnd.nextDouble()) % 1.0) * size.height;
+      canvas.drawLine(
+        Offset(x, y),
+        Offset(x - 2, y + 8),
+        rainPaint,
+      );
+    }
+  }
+
+  void _paintStorm(Canvas canvas, Size size) {
+    _paintRain(canvas, size);
+    final flash = math.sin(t * 20 * math.pi);
+    if (flash > 0.95) {
+      canvas.drawRect(
+        Offset.zero & size,
+        Paint()..color = Colors.white.withValues(alpha: 0.04),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _WeatherPainter old) =>
+      old.weather != weather || old.t != t;
+}
 
 class _PremiumBadge extends StatefulWidget {
   const _PremiumBadge();

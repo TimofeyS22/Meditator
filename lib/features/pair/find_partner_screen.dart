@@ -161,7 +161,7 @@ class _FindPartnerScreenState extends State<FindPartnerScreen>
       ShareParams(
         text:
             'Партнёр по практике в Meditator — код: $_inviteCode\n'
-            'Aura и мы вместе держим мотивацию 💜',
+            'Aura и мы вместе держим мотивацию',
         subject: 'Приглашение в Meditator',
       ),
     );
@@ -192,8 +192,8 @@ class _FindPartnerScreenState extends State<FindPartnerScreen>
                   Row(
                     children: [
                       IconButton(
-                        icon: const Icon(Icons.arrow_back_ios_new_rounded,
-                            color: C.text),
+                        icon: Icon(Icons.arrow_back_ios_new_rounded,
+                            color: context.cText),
                         tooltip: 'Назад',
                         onPressed: _searching ? null : () => context.pop(),
                       ),
@@ -211,7 +211,7 @@ class _FindPartnerScreenState extends State<FindPartnerScreen>
                   Text(
                     'Партнёр — не конкурент, а союзник: вы видите серии друг друга, кидаете «напоминалки» и не пропадаете в рутине.',
                     style: theme.textTheme.bodyLarge
-                        ?.copyWith(color: C.textSec, height: 1.45),
+                        ?.copyWith(height: 1.45),
                   ),
                   const SizedBox(height: S.l),
                   GlassCard(
@@ -224,7 +224,7 @@ class _FindPartnerScreenState extends State<FindPartnerScreen>
                         Text(
                           'Аккаунтабилити бустит дисциплину до ~95% — короткие чек-ины с Aura и партнёром превращают практику в социальный ритуал без токсичности.',
                           style: theme.textTheme.bodyMedium
-                              ?.copyWith(color: C.textSec, height: 1.4),
+                              ?.copyWith(height: 1.4),
                         ),
                       ],
                     ),
@@ -233,7 +233,7 @@ class _FindPartnerScreenState extends State<FindPartnerScreen>
 
                   Text('Твой код приглашения',
                       style: theme.textTheme.titleSmall
-                          ?.copyWith(color: C.textSec),
+                          ?.copyWith(color: context.cTextSec),
                       textAlign: TextAlign.center),
                   const SizedBox(height: S.s),
                   GlassCard(
@@ -256,8 +256,7 @@ class _FindPartnerScreenState extends State<FindPartnerScreen>
                   Text(
                     'Нажми, чтобы скопировать',
                     textAlign: TextAlign.center,
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: C.textDim),
+                    style: theme.textTheme.bodySmall,
                   ),
 
                   const SizedBox(height: S.xl),
@@ -283,7 +282,7 @@ class _FindPartnerScreenState extends State<FindPartnerScreen>
             if (_searching)
               Positioned.fill(
                 child: ColoredBox(
-                  color: C.bg.withValues(alpha: 0.88),
+                  color: context.cBg.withValues(alpha: 0.88),
                   child: Center(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,

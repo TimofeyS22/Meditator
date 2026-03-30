@@ -186,7 +186,7 @@ class _StreakCelebrationState extends State<StreakCelebration>
     final staggerMs = reduceMotion ? 0 : 100;
     final enterDur = reduceMotion ? Duration.zero : Anim.normal;
     final enterCurve = Anim.curve;
-    final springCurve = Anim.curveSpring;
+    final springCurve = Anim.curveGentle;
 
     final numberStyle = Theme.of(context).textTheme.displayLarge?.copyWith(
           fontSize: 96,
@@ -219,8 +219,12 @@ class _StreakCelebrationState extends State<StreakCelebration>
                         sigmaX: blurSigma,
                         sigmaY: blurSigma,
                       ),
-                      child: Container(
-                        color: C.bgDeep.withValues(alpha: 0.8),
+                      child: Builder(
+                        builder: (ctx) {
+                          return Container(
+                            color: ctx.cBgDeep.withValues(alpha: 0.8),
+                          );
+                        },
                       ),
                     ),
                   );
@@ -305,7 +309,7 @@ class _StreakCelebrationState extends State<StreakCelebration>
                       'дней подряд',
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            color: C.textSec,
+                            color: context.cTextSec,
                             fontWeight: FontWeight.w500,
                           ),
                     )
@@ -326,7 +330,6 @@ class _StreakCelebrationState extends State<StreakCelebration>
                       displayMessage,
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                            color: C.text,
                             height: 1.4,
                           ),
                     )
@@ -431,6 +434,7 @@ class _StreakCelebrationState extends State<StreakCelebration>
                       size: _badgeSize,
                     ),
                   ),
+          ),
         );
       },
     );

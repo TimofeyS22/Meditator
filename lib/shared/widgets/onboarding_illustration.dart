@@ -252,7 +252,7 @@ class _GoalsPainter extends CustomPainter {
       canvas.drawCircle(
         end,
         3.2 * scale * spark,
-        Paint()..color = C.accent.withValues(alpha: 0.4 + 0.5 * spark)),
+        Paint()..color = C.accent.withValues(alpha: 0.4 + 0.5 * spark),
       );
     }
   }

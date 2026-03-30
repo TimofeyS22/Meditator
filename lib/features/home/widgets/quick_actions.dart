@@ -3,8 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
 import 'package:meditator/app/theme.dart';
-import 'package:meditator/shared/utils/accessibility.dart';
-import 'package:meditator/shared/widgets/custom_icons.dart';
 import 'package:meditator/shared/widgets/glass_card.dart';
 
 class QuickActions extends StatelessWidget {
@@ -12,136 +10,86 @@ class QuickActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = Theme.of(context).textTheme;
-    final actions = <(String, Widget, VoidCallback)>[
-      (
-        'SOS',
-        const MIcon(MIconType.sos, size: 32, color: Colors.white),
-        () => context.push('/library?category=emergency'),
-      ),
-      (
-        'Дыхание',
-        const MIcon(MIconType.air, size: 32, color: Colors.white),
-        () => context.push('/breathe'),
-      ),
-      (
-        'Журнал',
-        const MIcon(MIconType.book, size: 32, color: Colors.white),
-        () => context.go('/journal'),
-      ),
-      (
-        'Партнёр',
-        const MIcon(MIconType.heart, size: 32, color: Colors.white),
-        () => context.push('/pair'),
-      ),
+    final actions = <_ActionDef>[
+      _ActionDef('Библиотека', Icons.library_music_rounded, C.primary, () => context.push('/library')),
+      _ActionDef('Дыхание', Icons.air_rounded, C.accent, () => context.push('/breathing')),
+      _ActionDef('Таймер', Icons.timer_rounded, C.calm, () => context.push('/timer')),
+      _ActionDef('AI-практика', Icons.auto_awesome_rounded, C.gold, () => context.push('/ai-play?duration=10')),
+      _ActionDef('Звуковая лаб', Icons.graphic_eq_rounded, C.rose, () => context.push('/sound-lab')),
     ];
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Быстрый доступ',
-          style: t.titleMedium?.copyWith(color: C.text),
-        ),
-        const SizedBox(height: S.m),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          clipBehavior: Clip.none,
-          child: Row(
-            children: [
-              for (var i = 0; i < actions.length; i++) ...[
-                if (i > 0) const SizedBox(width: S.s),
-                _ActionCard(
-                  label: actions[i].$1,
-                  icon: actions[i].$2,
-                  onTap: actions[i].$3,
-                )
-                    .animate()
-                    .fadeIn(delay: (60 * i).ms, duration: 380.ms)
-                    .scale(
-                      begin: const Offset(0.85, 0.85),
-                      delay: (60 * i).ms,
-                      duration: 380.ms,
-                      curve: Curves.easeOutBack,
-                    ),
-              ],
-            ],
-          ),
-        ),
-      ],
+    return SizedBox(
+      height: 100,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        clipBehavior: Clip.none,
+        padding: EdgeInsets.zero,
+        itemCount: actions.length,
+        separatorBuilder: (_, __) => const SizedBox(width: S.s),
+        itemBuilder: (context, i) {
+          final a = actions[i];
+          return _ActionCard(def: a, index: i);
+        },
+      ),
     );
   }
 }
 
-class _ActionCard extends StatefulWidget {
-  const _ActionCard({
-    required this.label,
-    required this.icon,
-    required this.onTap,
-  });
-
+class _ActionDef {
   final String label;
-  final Widget icon;
+  final IconData icon;
+  final Color color;
   final VoidCallback onTap;
-
-  @override
-  State<_ActionCard> createState() => _ActionCardState();
+  const _ActionDef(this.label, this.icon, this.color, this.onTap);
 }
 
-class _ActionCardState extends State<_ActionCard> {
-  bool _pressed = false;
+class _ActionCard extends StatelessWidget {
+  const _ActionCard({required this.def, required this.index});
+  final _ActionDef def;
+  final int index;
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
-    final reduceMotion = AccessibilityUtils.reduceMotion(context);
 
-    return Semantics(
-      button: true,
-      label: widget.label,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
+    return SizedBox(
+      width: 100,
+      child: GlassCard(
+        variant: GlassCardVariant.surface,
         onTap: () {
           HapticFeedback.lightImpact();
-          widget.onTap();
+          def.onTap();
         },
-        onTapDown: (_) => setState(() => _pressed = true),
-        onTapUp: (_) => setState(() => _pressed = false),
-        onTapCancel: () => setState(() => _pressed = false),
-        child: AnimatedScale(
-          scale: _pressed && !reduceMotion ? 1.02 : 1.0,
-          duration: AccessibilityUtils.adjustedDuration(context, Anim.fast),
-          curve: Anim.curve,
-          child: SizedBox(
-            width: 120,
-            height: 140,
-            child: GlassCard(
-              showGlow: _pressed && !reduceMotion,
-              glowColor: C.glowPrimary,
-              semanticLabel: widget.label,
-              padding: const EdgeInsets.symmetric(vertical: S.m, horizontal: S.s),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  ShaderMask(
-                    shaderCallback: (bounds) =>
-                        C.gradientPrimary.createShader(bounds),
-                    child: widget.icon,
-                  ),
-                  const SizedBox(height: S.s),
-                  Text(
-                    widget.label,
-                    textAlign: TextAlign.center,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: t.bodySmall?.copyWith(color: C.textSec),
-                  ),
-                ],
+        padding: const EdgeInsets.all(S.m),
+        semanticLabel: def.label,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: def.color.withValues(alpha: 0.12),
               ),
+              child: Icon(def.icon, size: 18, color: def.color),
             ),
-          ),
+            Text(
+              def.label,
+              style: t.labelSmall?.copyWith(
+                color: context.cText,
+                fontWeight: FontWeight.w600,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
         ),
       ),
-    );
+    )
+        .animate()
+        .fadeIn(delay: (100 * index).ms, duration: Anim.normal)
+        .slideX(begin: 0.08, delay: (100 * index).ms, duration: Anim.normal, curve: Anim.curve);
   }
 }

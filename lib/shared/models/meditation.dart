@@ -1,6 +1,7 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter/material.dart';
 import 'package:meditator/app/theme.dart';
+import 'package:meditator/core/config/env.dart';
 
 enum MeditationCategory {
   sleep,
@@ -33,19 +34,21 @@ extension MeditationCategoryX on MeditationCategory {
         MeditationCategory.emergency => 'SOS',
       };
 
-  String get emoji => switch (this) {
-        MeditationCategory.sleep => '🌙',
-        MeditationCategory.stress => '🌊',
-        MeditationCategory.focus => '🔮',
-        MeditationCategory.anxiety => '🫧',
-        MeditationCategory.morning => '☀️',
-        MeditationCategory.evening => '🌆',
-        MeditationCategory.gratitude => '🙏',
-        MeditationCategory.selfLove => '💗',
-        MeditationCategory.bodyScan => '🧘',
-        MeditationCategory.breathing => '💨',
-        MeditationCategory.visualization => '✨',
-        MeditationCategory.emergency => '🆘',
+  String get emoji => '';
+
+  IconData get iconData => switch (this) {
+        MeditationCategory.sleep => Icons.bedtime_rounded,
+        MeditationCategory.stress => Icons.waves_rounded,
+        MeditationCategory.focus => Icons.center_focus_strong_rounded,
+        MeditationCategory.anxiety => Icons.cloud_rounded,
+        MeditationCategory.morning => Icons.wb_sunny_rounded,
+        MeditationCategory.evening => Icons.nights_stay_rounded,
+        MeditationCategory.gratitude => Icons.volunteer_activism_rounded,
+        MeditationCategory.selfLove => Icons.favorite_rounded,
+        MeditationCategory.bodyScan => Icons.accessibility_new_rounded,
+        MeditationCategory.breathing => Icons.air_rounded,
+        MeditationCategory.visualization => Icons.auto_awesome_rounded,
+        MeditationCategory.emergency => Icons.flash_on_rounded,
       };
 
   Color get color => switch (this) {
@@ -111,7 +114,7 @@ class Meditation extends Equatable {
       description: json['description'] as String? ?? '',
       category: cat,
       durationMinutes: (json['durationMinutes'] ?? json['duration_minutes']) as int? ?? 10,
-      audioUrl: json['audioUrl'] as String? ?? json['audio_url'] as String?,
+      audioUrl: _resolveUrl(json['audioUrl'] as String? ?? json['audio_url'] as String?),
       imageUrl: json['imageUrl'] as String? ?? json['image_url'] as String?,
       isGenerated: json['isGenerated'] as bool? ?? json['is_generated'] as bool? ?? false,
       isPremium: json['isPremium'] as bool? ?? json['is_premium'] as bool? ?? false,
@@ -120,6 +123,12 @@ class Meditation extends Equatable {
       playCount: (json['playCount'] ?? json['play_count']) as int? ?? 0,
       createdAt: _parseDate(json['createdAt'] ?? json['created_at']) ?? DateTime.fromMillisecondsSinceEpoch(0),
     );
+  }
+
+  static String? _resolveUrl(String? url) {
+    if (url == null || url.isEmpty) return url;
+    if (url.startsWith('/')) return '${Env.apiUrl}$url';
+    return url;
   }
 
   static DateTime? _parseDate(dynamic v) {

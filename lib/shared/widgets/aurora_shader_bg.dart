@@ -2,6 +2,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:meditator/app/theme.dart';
+import 'package:meditator/shared/utils/accessibility.dart';
 
 class AuroraShaderBg extends StatefulWidget {
   const AuroraShaderBg({
@@ -23,7 +24,9 @@ class _AuroraShaderBgState extends State<AuroraShaderBg>
     with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
   ui.FragmentProgram? _program;
+  ui.FragmentShader? _cachedShader;
   bool _shaderFailed = false;
+  bool _reduceMotion = false;
 
   @override
   void initState() {
@@ -35,10 +38,29 @@ class _AuroraShaderBgState extends State<AuroraShaderBg>
     _loadShader();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final rm = AccessibilityUtils.reduceMotion(context);
+    if (_reduceMotion != rm) {
+      _reduceMotion = rm;
+      if (_reduceMotion) {
+        _ctrl.stop();
+      } else if (!_ctrl.isAnimating) {
+        _ctrl.repeat();
+      }
+    }
+  }
+
   Future<void> _loadShader() async {
     try {
       final prog = await ui.FragmentProgram.fromAsset('shaders/aurora_flow.frag');
-      if (mounted) setState(() => _program = prog);
+      if (mounted) {
+        setState(() {
+          _program = prog;
+          _cachedShader = prog.fragmentShader();
+        });
+      }
     } catch (_) {
       if (mounted) setState(() => _shaderFailed = true);
     }
@@ -46,13 +68,14 @@ class _AuroraShaderBgState extends State<AuroraShaderBg>
 
   @override
   void dispose() {
+    _cachedShader?.dispose();
     _ctrl.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_shaderFailed || _program == null) {
+    if (_shaderFailed || _program == null || _reduceMotion) {
       return const _FallbackBg();
     }
 
@@ -62,7 +85,7 @@ class _AuroraShaderBgState extends State<AuroraShaderBg>
         builder: (context, _) => CustomPaint(
           size: Size.infinite,
           painter: _AuroraShaderPainter(
-            program: _program!,
+            shader: _cachedShader!,
             time: _ctrl.value * 20.0,
             progress: widget.progress,
             color1: widget.color1,
@@ -75,14 +98,14 @@ class _AuroraShaderBgState extends State<AuroraShaderBg>
 }
 
 class _AuroraShaderPainter extends CustomPainter {
-  final ui.FragmentProgram program;
+  final ui.FragmentShader shader;
   final double time;
   final double progress;
   final Color color1;
   final Color color2;
 
   _AuroraShaderPainter({
-    required this.program,
+    required this.shader,
     required this.time,
     required this.progress,
     required this.color1,
@@ -91,20 +114,19 @@ class _AuroraShaderPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final shader = program.fragmentShader();
     shader
       ..setFloat(0, size.width)
       ..setFloat(1, size.height)
       ..setFloat(2, time)
       ..setFloat(3, progress)
-      ..setFloat(4, color1.red / 255.0)
-      ..setFloat(5, color1.green / 255.0)
-      ..setFloat(6, color1.blue / 255.0)
-      ..setFloat(7, color1.opacity)
-      ..setFloat(8, color2.red / 255.0)
-      ..setFloat(9, color2.green / 255.0)
-      ..setFloat(10, color2.blue / 255.0)
-      ..setFloat(11, color2.opacity);
+      ..setFloat(4, color1.r)
+      ..setFloat(5, color1.g)
+      ..setFloat(6, color1.b)
+      ..setFloat(7, color1.a)
+      ..setFloat(8, color2.r)
+      ..setFloat(9, color2.g)
+      ..setFloat(10, color2.b)
+      ..setFloat(11, color2.a);
 
     canvas.drawRect(
       Offset.zero & size,
