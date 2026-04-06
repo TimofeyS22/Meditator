@@ -1,115 +1,97 @@
-import 'dart:async';
-
-import 'package:dio/dio.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:meditator/core/api/api_client.dart';
+import 'package:meditator/core/storage/local_storage.dart';
 
-class AuthUser {
-  AuthUser({required this.id, this.email, this.displayName});
-  final String id;
-  final String? email;
-  final String? displayName;
-}
+enum AuthStatus { unknown, unauthenticated, onboarding, authenticated }
 
-class AuthService {
-  AuthService._();
-  static final AuthService instance = AuthService._();
+class AuthState {
+  final AuthStatus status;
+  final bool isOnboarded;
 
-  final _ctrl = StreamController<AuthUser?>.broadcast();
-  AuthUser? _currentUser;
+  const AuthState({
+    this.status = AuthStatus.unknown,
+    this.isOnboarded = false,
+  });
 
-  AuthUser? get currentUser => _currentUser;
-  String? get userId => _currentUser?.id;
-  Stream<AuthUser?> get onAuthChange => _ctrl.stream;
-
-  Future<AuthUser> signUp(String email, String password, {String? displayName}) async {
-    try {
-      final resp = await ApiClient.instance.dio.post('/auth/signup', data: {
-        'email': email,
-        'password': password,
-        if (displayName != null) 'display_name': displayName,
-      });
-      return await _handleAuthResponse(resp.data as Map<String, dynamic>);
-    } on DioException {
-      rethrow;
-    }
-  }
-
-  Future<AuthUser> signIn(String email, String password) async {
-    try {
-      final resp = await ApiClient.instance.dio.post('/auth/signin', data: {
-        'email': email,
-        'password': password,
-      });
-      return await _handleAuthResponse(resp.data as Map<String, dynamic>);
-    } on DioException {
-      rethrow;
-    }
-  }
-
-  /// Always succeeds with HTTP 200 when the server follows the standard
-  /// "do not reveal if email exists" contract.
-  Future<void> requestPasswordReset(String email) async {
-    await ApiClient.instance.dio.post('/auth/forgot-password', data: {
-      'email': email,
-    });
-  }
-
-  static const _secureStorage = FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: true),
-  );
-
-  Future<void> signOut() async {
-    try {
-      final refresh = await _secureStorage.read(key: 'auth_refresh_token');
-      if (refresh != null && refresh.isNotEmpty) {
-        await ApiClient.instance.dio.post('/auth/logout', data: {'refresh_token': refresh});
-      }
-    } catch (_) {}
-    await ApiClient.instance.clearTokens();
-    _currentUser = null;
-    _ctrl.add(null);
-  }
-
-  Future<AuthUser?> tryRestoreSession() async {
-    if (!await ApiClient.instance.hasToken) {
-      _ctrl.add(null);
-      return null;
-    }
-    try {
-      final resp = await ApiClient.instance.dio.get('/auth/me');
-      final data = resp.data as Map<String, dynamic>;
-      _currentUser = AuthUser(
-        id: data['id'] as String,
-        email: data['email'] as String?,
-        displayName: data['display_name'] as String?,
-      );
-      _ctrl.add(_currentUser);
-      return _currentUser;
-    } on DioException catch (e) {
-      final status = e.response?.statusCode;
-      if (status == 401 || status == 403) {
-        await ApiClient.instance.clearTokens();
-        _currentUser = null;
-        _ctrl.add(null);
-      }
-      // On network errors (timeout, connection error) — keep tokens, work offline
-      return _currentUser;
-    }
-  }
-
-  Future<AuthUser> _handleAuthResponse(Map<String, dynamic> data) async {
-    final access = data['access_token'] as String;
-    final refresh = data['refresh_token'] as String;
-    await ApiClient.instance.saveTokens(access, refresh);
-
-    final userMap = data['user'] as Map<String, dynamic>;
-    _currentUser = AuthUser(
-      id: userMap['id'] as String,
-      email: userMap['email'] as String?,
-      displayName: userMap['display_name'] as String?,
+  AuthState copyWith({AuthStatus? status, bool? isOnboarded}) {
+    return AuthState(
+      status: status ?? this.status,
+      isOnboarded: isOnboarded ?? this.isOnboarded,
     );
-    _ctrl.add(_currentUser);
-    return _currentUser!;
   }
 }
+
+class AuthService extends Notifier<AuthState> {
+  @override
+  AuthState build() {
+    _init();
+    return const AuthState();
+  }
+
+  Future<void> _init() async {
+    final storage = ref.read(localStorageProvider);
+    final api = ref.read(apiClientProvider);
+
+    final onboarded = await storage.hasOnboarded;
+
+    bool hasToken = false;
+    try {
+      hasToken = await api.hasTokens;
+    } catch (_) {
+      // Keychain unavailable (simulator / first launch)
+    }
+
+    if (!onboarded) {
+      state = const AuthState(status: AuthStatus.onboarding);
+    } else if (hasToken) {
+      state = AuthState(status: AuthStatus.authenticated, isOnboarded: true);
+    } else {
+      state = AuthState(status: AuthStatus.unauthenticated, isOnboarded: true);
+    }
+  }
+
+  Future<void> completeOnboarding() async {
+    final storage = ref.read(localStorageProvider);
+    await storage.setOnboarded();
+
+    // Preserve authenticated status if user just registered/logged in
+    final api = ref.read(apiClientProvider);
+    bool hasToken = false;
+    try { hasToken = await api.hasTokens; } catch (_) {}
+
+    state = state.copyWith(
+      status: hasToken ? AuthStatus.authenticated : AuthStatus.unauthenticated,
+      isOnboarded: true,
+    );
+  }
+
+  Future<String?> login(String email, String password) async {
+    try {
+      final api = ref.read(apiClientProvider);
+      await api.login(email, password);
+      state = state.copyWith(status: AuthStatus.authenticated);
+      return null;
+    } catch (e) {
+      return 'Неверный email или пароль';
+    }
+  }
+
+  Future<String?> register(String email, String password, {String? name}) async {
+    try {
+      final api = ref.read(apiClientProvider);
+      await api.register(email, password, name: name);
+      state = state.copyWith(status: AuthStatus.authenticated);
+      return null;
+    } catch (e) {
+      return 'Ошибка регистрации';
+    }
+  }
+
+  Future<void> logout() async {
+    final api = ref.read(apiClientProvider);
+    await api.logout();
+    state = state.copyWith(status: AuthStatus.unauthenticated);
+  }
+}
+
+final authProvider = NotifierProvider<AuthService, AuthState>(AuthService.new);

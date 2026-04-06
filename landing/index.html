@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aura — Спокойствие за 60 секунд</title>
+  <meta name="description" content="Aura помогает прийти в себя за 60 секунд. Без медитаций. Без усилий. Прямо сейчас.">
+  <meta property="og:title" content="Aura — Спокойствие за 60 секунд">
+  <meta property="og:description" content="Одно нажатие. Одна минута дыхания. И внутри — тише.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://mymeditator.ru">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+    :root{
+      --bg:#020108;--surface:#0A0A1A;--primary:#8B7FFF;--accent:#5CE1E6;
+      --warm:#FFB156;--green:#56E09A;--rose:#FF6B8A;
+      --text:#F0ECF9;--text-muted:#8A84A8;--text-dim:#5A5478;
+    }
+    html{scroll-behavior:smooth}
+    body{font-family:'Inter',-apple-system,sans-serif;background:var(--bg);color:var(--text);line-height:1.6;overflow-x:hidden}
+    .container{max-width:680px;margin:0 auto;padding:0 24px}
+
+    /* ── Global particle canvas (behind everything) ── */
+    #bg-canvas{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:0}
+    section,footer{position:relative;z-index:1}
+
+    .reveal{opacity:0;transform:translateY(20px);transition:opacity .7s cubic-bezier(.4,0,.2,1),transform .7s cubic-bezier(.4,0,.2,1)}
+    .reveal.visible{opacity:1;transform:translateY(0)}
+
+    /* ── Hero ────────────────────────────────────────── */
+    .hero{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;position:relative}
+    .hero-orb-wrap{position:relative;width:140px;height:140px;margin-bottom:16px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+    .hero-orb{width:100%;height:100%;border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.25),rgba(139,127,255,.12),transparent);box-shadow:0 0 60px rgba(139,127,255,.35),0 0 120px rgba(139,127,255,.1);transition:transform 5s ease-in-out,box-shadow .3s ease}
+    .hero-orb.inhale{transform:scale(1.12);box-shadow:0 0 80px rgba(139,127,255,.5),0 0 150px rgba(139,127,255,.15)}
+    .hero-orb.exhale{transform:scale(1);box-shadow:0 0 50px rgba(139,127,255,.3),0 0 100px rgba(139,127,255,.08)}
+    .hero-orb.idle{animation:breathe 5s ease-in-out infinite}
+    @keyframes breathe{0%,100%{transform:scale(1);opacity:.88}50%{transform:scale(1.08);opacity:1}}
+
+    .breath-hint{font-size:14px;color:var(--text-dim);font-weight:300;height:24px;margin-bottom:32px;transition:opacity .5s ease;letter-spacing:1px}
+    .breath-hint.hidden{opacity:0}
+
+    .hero h1{font-size:clamp(28px,6vw,48px);font-weight:300;letter-spacing:-.5px;line-height:1.1;margin-bottom:20px;max-width:560px}
+    .hero h1 em{font-style:normal;color:var(--primary)}
+    .hero-sub{font-size:17px;color:var(--text-muted);font-weight:300;max-width:420px;margin-bottom:40px;line-height:1.7}
+
+    .cta{display:inline-block;padding:16px 40px;border-radius:24px;font-size:16px;font-weight:600;color:#fff;background:linear-gradient(135deg,var(--primary),var(--accent));text-decoration:none;transition:transform .12s ease,box-shadow .3s ease;box-shadow:0 0 30px rgba(139,127,255,.25)}
+    .cta:hover{transform:scale(1.04);box-shadow:0 0 50px rgba(139,127,255,.45)}
+    .cta:active{transform:scale(.97)}
+    .cta-micro{display:block;margin-top:14px;font-size:13px;color:var(--text-dim)}
+    .cta-block{width:100%;display:block;text-align:center}
+
+    section{padding:100px 0}
+    .section-label{font-size:12px;font-weight:500;letter-spacing:2px;text-transform:uppercase;color:var(--text-dim);margin-bottom:20px}
+    h2{font-size:clamp(24px,5vw,36px);font-weight:300;line-height:1.2;margin-bottom:28px}
+    h2 em{font-style:normal;color:var(--primary)}
+    .body-text{font-size:17px;color:var(--text-muted);font-weight:300;line-height:1.8}
+    .body-text strong{color:var(--text);font-weight:500}
+
+    .problem-lines{list-style:none}
+    .problem-lines li{font-size:18px;color:var(--text-muted);font-weight:300;padding:14px 0;border-bottom:1px solid rgba(255,255,255,.04);opacity:0;transform:translateX(-12px);transition:opacity .5s ease,transform .5s ease}
+    .problem-lines.visible li{opacity:1;transform:translateX(0)}
+    .problem-lines li:nth-child(1){transition-delay:.05s}.problem-lines li:nth-child(2){transition-delay:.1s}.problem-lines li:nth-child(3){transition-delay:.15s}.problem-lines li:nth-child(4){transition-delay:.2s}.problem-lines li:nth-child(5){transition-delay:.25s}.problem-lines li:nth-child(6){transition-delay:.3s}
+    .problem-lines li:last-child{border:none;color:var(--text);font-weight:400;padding-top:24px}
+
+    .steps{display:flex;flex-direction:column;gap:40px;margin-top:40px}
+    .step{display:flex;gap:20px;align-items:flex-start}
+    .step-num{width:36px;height:36px;border-radius:50%;background:rgba(139,127,255,.1);border:1px solid rgba(139,127,255,.2);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:500;color:var(--primary);flex-shrink:0}
+    .step-content h3{font-size:18px;font-weight:500;margin-bottom:6px}
+    .step-content p{font-size:15px;color:var(--text-muted);font-weight:300;line-height:1.6}
+
+    .urgency{text-align:center;padding:60px 0;border-top:1px solid rgba(255,255,255,.04);border-bottom:1px solid rgba(255,255,255,.04)}
+    .urgency p{font-size:clamp(20px,4vw,28px);font-weight:300;color:var(--text);line-height:1.4}
+    .urgency .cta{margin-top:32px}
+
+    .cosmos-wrap{margin:48px 0;border-radius:16px;overflow:hidden;position:relative;height:320px;background:linear-gradient(135deg,#0D1B2A,#1A374D)}
+    #cosmos-canvas{width:100%;height:100%;display:block}
+    .cosmos-label{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);font-size:12px;color:var(--text-dim);letter-spacing:1px;z-index:1}
+
+    .testimonials{display:flex;flex-direction:column;gap:24px;margin-top:36px}
+    .testimonial{background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.05);border-radius:16px;padding:24px;transition:border-color .3s ease}
+    .testimonial:hover{border-color:rgba(139,127,255,.15)}
+    .testimonial blockquote{font-size:16px;font-weight:300;line-height:1.7;color:var(--text);margin-bottom:16px}
+    .testimonial cite{font-style:normal;font-size:13px;color:var(--text-dim)}
+
+    .contrast-grid{display:grid;grid-template-columns:1fr 1fr;gap:2px;margin-top:36px;border-radius:12px;overflow:hidden}
+    .contrast-cell{padding:20px;font-size:15px;font-weight:300;line-height:1.5}
+    .contrast-cell.before{background:rgba(255,107,138,.05);color:var(--rose)}
+    .contrast-cell.after{background:rgba(86,224,154,.05);color:var(--green)}
+    .contrast-header{font-size:12px;font-weight:500;letter-spacing:1.5px;text-transform:uppercase;padding:14px 20px}
+    .contrast-header.before{background:rgba(255,107,138,.03);color:var(--text-dim)}
+    .contrast-header.after{background:rgba(86,224,154,.03);color:var(--text-dim)}
+
+    .price-card{background:rgba(255,255,255,.025);border:1px solid rgba(139,127,255,.12);border-radius:20px;padding:40px 32px;text-align:center;margin-top:36px}
+    .price-amount{font-size:48px;font-weight:300;color:var(--text);margin:20px 0 4px}
+    .price-amount span{font-size:18px;color:var(--text-muted)}
+    .price-per-day{font-size:14px;color:var(--primary);margin-bottom:4px}
+    .price-context{font-size:15px;color:var(--text-dim);margin-bottom:28px}
+    .price-free{font-size:14px;color:var(--text-muted);margin-top:20px;padding-top:20px;border-top:1px solid rgba(255,255,255,.05)}
+
+    .final-section{text-align:center;padding:120px 0}
+    .final-section h2{margin-bottom:16px}
+    .final-section .body-text{margin-bottom:40px}
+    .final-orb{width:90px;height:90px;border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.2),rgba(139,127,255,.08),transparent);box-shadow:0 0 50px rgba(139,127,255,.3),0 0 100px rgba(139,127,255,.1);animation:breathe 6s ease-in-out infinite;margin:0 auto 48px}
+
+    footer{text-align:center;padding:40px 0;font-size:13px;color:var(--text-dim);border-top:1px solid rgba(255,255,255,.04)}
+    footer a{color:var(--text-muted);text-decoration:none}
+    footer a:hover{color:var(--text)}
+
+    @media(max-width:640px){
+      section{padding:72px 0}
+      .contrast-grid{grid-template-columns:1fr}
+      .price-card{padding:32px 24px}
+      .hero-orb-wrap{width:110px;height:110px}
+    }
+  </style>
+</head>
+<body>
+
+  <canvas id="bg-canvas"></canvas>
+
+  <!-- ═══ HERO ═══ -->
+  <section class="hero">
+    <div class="hero-orb-wrap" id="orb-wrap">
+      <div class="hero-orb idle" id="orb"></div>
+    </div>
+    <div class="breath-hint hidden" id="breath-hint">вдох</div>
+    <h1>Спокойствие за <em>60 секунд</em></h1>
+    <p class="hero-sub">Нажми на сферу. Сделай один вдох.<br>Почувствуй, как становится тише.</p>
+    <a href="/try" class="cta">Почувствовать тишину</a>
+    <span class="cta-micro">Прямо в браузере. Бесплатно. 60 секунд.</span>
+  </section>
+
+  <!-- ═══ TRUST SIGNAL ═══ -->
+  <div style="text-align:center;padding:24px 0 0;position:relative;z-index:1">
+    <p style="font-size:13px;color:var(--text-dim);font-weight:300;letter-spacing:.5px">
+      <span id="breath-counter">2,847</span> дыханий сегодня &nbsp;&middot;&nbsp; 78% чувствуют облегчение после первой сессии
+    </p>
+  </div>
+
+  <!-- ═══ PROBLEM ═══ -->
+  <section>
+    <div class="container">
+      <p class="section-label reveal">Знакомо?</p>
+      <ul class="problem-lines" id="problems">
+        <li>Тревога накрывает без предупреждения</li>
+        <li>Голова перегружена, но остановиться нельзя</li>
+        <li>Вечером не получается отпустить день</li>
+        <li>Утром просыпаешься уже уставшим</li>
+        <li>20 минут медитации — не вариант, когда внутри шторм</li>
+        <li>Тебе нужно что-то, что работает <strong>прямо сейчас</strong></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ═══ URGENCY #1 ═══ -->
+  <section class="urgency reveal">
+    <div class="container">
+      <p>Прямо сейчас кто-то открыл Aura.<br>Через 60 секунд ему стало легче.</p>
+      <a href="/try" class="cta">Мне тоже нужно</a>
+    </div>
+  </section>
+
+  <!-- ═══ HOW IT WORKS ═══ -->
+  <section>
+    <div class="container">
+      <p class="section-label reveal">Как это работает</p>
+      <h2 class="reveal">Три шага. <em>Меньше двух минут.</em></h2>
+      <div class="steps">
+        <div class="step reveal">
+          <div class="step-num">1</div>
+          <div class="step-content">
+            <h3>Скажи, что чувствуешь</h3>
+            <p>Одно нажатие. Тревога, усталость, перегрузка. Без анкет.</p>
+          </div>
+        </div>
+        <div class="step reveal">
+          <div class="step-num">2</div>
+          <div class="step-content">
+            <h3>Дыши по подсказке</h3>
+            <p>Aura подбирает ритм под твоё состояние. Каждый вдох и выдох — с подсказкой.</p>
+          </div>
+        </div>
+        <div class="step reveal">
+          <div class="step-num">3</div>
+          <div class="step-content">
+            <h3>Почувствуй разницу</h3>
+            <p>Пульс замедлился. Плечи опустились. Внутри — тише.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ COSMOS ═══ -->
+  <section id="cosmos-section">
+    <div class="container">
+      <p class="section-label reveal">Твоё пространство</p>
+      <h2 class="reveal">Вселенная, которая <em>чувствует тебя</em></h2>
+      <p class="body-text reveal">Внутри Aura живёт твой личный космос. Он реагирует на твоё состояние. Чем больше практикуешь — тем глубже он становится.</p>
+      <div class="cosmos-wrap reveal">
+        <canvas id="cosmos-canvas"></canvas>
+        <span class="cosmos-label">прокручивай — наблюдай, как пространство успокаивается</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ SOCIAL PROOF ═══ -->
+  <section>
+    <div class="container">
+      <p class="section-label reveal">Отзывы</p>
+      <h2 class="reveal">60 секунд. <em>Реальный результат.</em></h2>
+      <div class="testimonials">
+        <div class="testimonial reveal">
+          <blockquote>Перед экзаменом руки тряслись. Открыла Aura, продышала минуту. Руки перестали трястись. Буквально.</blockquote>
+          <cite>Аня, 22 — студентка</cite>
+        </div>
+        <div class="testimonial reveal">
+          <blockquote>После 10 часов за кодом голова как в тумане. Aura за полторы минуты возвращает ясность.</blockquote>
+          <cite>Дима, 29 — разработчик</cite>
+        </div>
+        <div class="testimonial reveal">
+          <blockquote>Calm — засыпала. Headspace — слишком долго. Aura — единственное, что реально использую.</blockquote>
+          <cite>Марина, 34 — менеджер</cite>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ URGENCY #2 ═══ -->
+  <section class="urgency reveal">
+    <div class="container">
+      <p>Ты <em>сейчас</em> чувствуешь что-то.<br>Через минуту может стать легче.</p>
+      <a href="/try" class="cta">Стать спокойнее</a>
+    </div>
+  </section>
+
+  <!-- ═══ BEFORE / AFTER ═══ -->
+  <section>
+    <div class="container">
+      <p class="section-label reveal">Трансформация</p>
+      <h2 class="reveal">Сейчас и <em>через 60 секунд</em></h2>
+      <div class="contrast-grid reveal">
+        <div class="contrast-header before">Сейчас</div>
+        <div class="contrast-header after">Через минуту</div>
+        <div class="contrast-cell before">Мысли гонятся</div>
+        <div class="contrast-cell after">Тишина внутри</div>
+        <div class="contrast-cell before">Плечи у ушей</div>
+        <div class="contrast-cell after">Тело расслаблено</div>
+        <div class="contrast-cell before">Не могу думать</div>
+        <div class="contrast-cell after">Ясная голова</div>
+        <div class="contrast-cell before">Сердце колотится</div>
+        <div class="contrast-cell after">Ровное дыхание</div>
+        <div class="contrast-cell before">«Мне плохо»</div>
+        <div class="contrast-cell after">«Мне легче»</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ PRICING ═══ -->
+  <section id="pricing">
+    <div class="container">
+      <p class="section-label reveal">Стоимость</p>
+      <h2 class="reveal">Сколько стоит <em>минута спокойствия</em>?</h2>
+      <p class="body-text reveal">Базовые техники — бесплатно. Навсегда.</p>
+      <div class="price-card reveal">
+        <p class="section-label">Aura Premium</p>
+        <div class="price-amount">299₽ <span>/ мес</span></div>
+        <p class="price-per-day">~10₽ в день</p>
+        <p class="price-context">Дешевле кофе. Ценнее, чем час без тревоги.</p>
+        <a href="#" class="cta cta-block">7 дней бесплатно</a>
+        <p class="price-free">Отмена в любой момент. Без карты.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ FINAL ═══ -->
+  <section class="final-section">
+    <div class="container">
+      <div class="final-orb"></div>
+      <h2 class="reveal">Тебе не нужно ещё одно<br>приложение для медитации</h2>
+      <p class="body-text reveal">Тебе нужно что-то, что работает.<br>Прямо сейчас. За 60 секунд.</p>
+      <a href="/try" class="cta">Почувствовать тишину</a>
+      <span class="cta-micro">60 секунд до спокойствия</span>
+    </div>
+  </section>
+
+  <footer>
+    <div class="container">
+      <p>Aura &copy; 2026 &nbsp;&middot;&nbsp; <a href="mailto:support@mymeditator.ru">Поддержка</a> &nbsp;&middot;&nbsp; <a href="#">Конфиденциальность</a></p>
+    </div>
+  </footer>
+
+  <script>
+    // ── Trust counter (slow organic increment) ─────────────
+    (() => {
+      const el = document.getElementById('breath-counter');
+      if (!el) return;
+      let count = 2847 + Math.floor(Math.random() * 200);
+      el.textContent = count.toLocaleString('ru-RU');
+      setInterval(() => {
+        count += Math.floor(Math.random() * 3) + 1;
+        el.textContent = count.toLocaleString('ru-RU');
+      }, 8000 + Math.random() * 4000);
+    })();
+
+    // ── Scroll reveal ──────────────────────────────────────
+    const obs = new IntersectionObserver(es => {
+      es.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+    }, { threshold: 0.15 });
+    document.querySelectorAll('.reveal,.problem-lines').forEach(el => obs.observe(el));
+
+    // ── Hero orb: interactive breathing ────────────────────
+    (() => {
+      const orb = document.getElementById('orb');
+      const hint = document.getElementById('breath-hint');
+      const wrap = document.getElementById('orb-wrap');
+      let breathing = false;
+
+      wrap.addEventListener('click', () => {
+        if (breathing) return;
+        breathing = true;
+        orb.classList.remove('idle');
+        hint.classList.remove('hidden');
+
+        // Inhale: 4s
+        hint.textContent = 'вдох...';
+        orb.classList.add('inhale');
+        orb.style.transitionDuration = '4s';
+
+        setTimeout(() => {
+          if (!breathing) return;
+          // Hold: 2s
+          hint.textContent = 'задержи...';
+        }, 4000);
+
+        setTimeout(() => {
+          if (!breathing) return;
+          // Exhale: 5s
+          hint.textContent = 'выдох...';
+          orb.classList.remove('inhale');
+          orb.classList.add('exhale');
+          orb.style.transitionDuration = '5s';
+        }, 6000);
+
+        setTimeout(() => {
+          if (!breathing) return;
+          hint.textContent = 'уже легче?';
+          setTimeout(() => {
+            hint.classList.add('hidden');
+            orb.classList.remove('exhale');
+            orb.classList.add('idle');
+            breathing = false;
+          }, 2000);
+        }, 11000);
+      });
+    })();
+
+    // ── Global background particles ───────────────────────
+    (() => {
+      const c = document.getElementById('bg-canvas');
+      if (!c) return;
+      const ctx = c.getContext('2d');
+      let w, h, particles = [], mouse = { x: -1000, y: -1000 };
+      let scrollY = 0, maxScroll = 1;
+
+      function resize() {
+        w = c.width = window.innerWidth;
+        h = c.height = window.innerHeight;
+        maxScroll = document.documentElement.scrollHeight - h;
+      }
+      resize();
+      window.addEventListener('resize', resize);
+      window.addEventListener('scroll', () => { scrollY = window.scrollY; }, { passive: true });
+
+      for (let i = 0; i < 45; i++) {
+        particles.push({
+          x: Math.random(), y: Math.random(),
+          r: 0.4 + Math.random() * 1.2,
+          a: 0.06 + Math.random() * 0.18,
+          phase: Math.random() * Math.PI * 2,
+          speed: 0.3 + Math.random() * 0.8,
+        });
+      }
+
+      document.addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; });
+      document.addEventListener('touchmove', e => {
+        if (e.touches[0]) { mouse.x = e.touches[0].clientX; mouse.y = e.touches[0].clientY; }
+      }, { passive: true });
+
+      function draw(t) {
+        ctx.clearRect(0, 0, w, h);
+        const time = t * 0.001;
+        const scrollFrac = maxScroll > 0 ? scrollY / maxScroll : 0;
+
+        // Global calming: particles slow as user scrolls deeper
+        const globalSpeed = 1.0 - scrollFrac * 0.5;
+
+        for (const p of particles) {
+          const spd = p.speed * globalSpeed;
+          const px = (p.x + Math.sin(time * 0.08 * spd + p.phase) * 0.03) % 1;
+          const py = (p.y + Math.cos(time * 0.06 * spd + p.phase) * 0.02) % 1;
+          const sx = px * w;
+          const sy = py * h;
+
+          const twinkle = (Math.sin(time * 0.7 + p.phase) + 1) * 0.5;
+
+          // Mouse proximity: soft glow
+          const dx = sx - mouse.x, dy = sy - mouse.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          const prox = Math.max(0, 1 - dist / 180);
+
+          const alpha = p.a * (0.3 + 0.7 * twinkle) + prox * 0.15;
+          const radius = p.r + prox * 1;
+
+          // Color shifts warmer as user scrolls (violet → green tint)
+          const r = Math.round(139 + scrollFrac * 30);
+          const g = Math.round(127 + scrollFrac * 80);
+          const b = Math.round(255 - scrollFrac * 60);
+
+          ctx.beginPath();
+          ctx.arc(sx, sy, radius, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(${r},${g},${b},${alpha.toFixed(3)})`;
+          ctx.fill();
+        }
+        requestAnimationFrame(draw);
+      }
+      requestAnimationFrame(draw);
+    })();
+
+    // ── Cosmos demo (scroll-driven calming) ───────────────
+    (() => {
+      const c = document.getElementById('cosmos-canvas');
+      if (!c) return;
+      const ctx = c.getContext('2d');
+      let w, h, particles = [], visible = false, scrollProgress = 0;
+
+      function resize() { w = c.width = c.offsetWidth; h = c.height = c.offsetHeight; }
+      resize();
+      window.addEventListener('resize', resize);
+
+      for (let i = 0; i < 50; i++) {
+        particles.push({
+          x: Math.random() * 1000, y: Math.random() * 600,
+          r: 0.5 + Math.random() * 2,
+          a: 0.15 + Math.random() * 0.4,
+          speed: 0.3 + Math.random() * 1.2,
+          phase: Math.random() * Math.PI * 2,
+          chaotic: Math.random() < 0.4,
+        });
+      }
+
+      const cosmosObs = new IntersectionObserver(([e]) => {
+        visible = e.isIntersecting;
+      }, { threshold: 0.1 });
+      cosmosObs.observe(c.parentElement);
+
+      window.addEventListener('scroll', () => {
+        if (!visible) return;
+        const rect = c.parentElement.getBoundingClientRect();
+        const viewH = window.innerHeight;
+        scrollProgress = Math.max(0, Math.min(1, (viewH - rect.top) / (viewH + rect.height)));
+      }, { passive: true });
+
+      function draw(t) {
+        ctx.clearRect(0, 0, w, h);
+        if (!visible) { requestAnimationFrame(draw); return; }
+
+        const time = t * 0.001;
+        const calm = scrollProgress;
+        const speedMul = 1.5 - calm * 1.2;
+        const chaosMul = 1 - calm;
+
+        const bloomAlpha = 0.04 + calm * 0.1;
+        const grd = ctx.createRadialGradient(w/2, h*0.4, 0, w/2, h*0.4, w*0.5);
+        grd.addColorStop(0, `rgba(${Math.round(139+calm*-40)},${Math.round(127+calm*100)},${Math.round(255-calm*100)},${bloomAlpha})`);
+        grd.addColorStop(1, 'transparent');
+        ctx.fillStyle = grd;
+        ctx.fillRect(0, 0, w, h);
+
+        for (const p of particles) {
+          const spd = p.speed * speedMul;
+          let px = (p.x + Math.sin(time * 0.2 * spd + p.phase) * 30) / 1000 * w;
+          let py = (p.y + Math.cos(time * 0.15 * spd + p.phase) * 20) / 600 * h;
+
+          if (p.chaotic && chaosMul > 0.1) {
+            px += Math.sin(time * 2.5 + p.phase * 3) * 4 * chaosMul;
+            py += Math.cos(time * 2.2 + p.phase * 2) * 3 * chaosMul;
+          }
+
+          const twinkle = (Math.sin(time + p.phase) + 1) * 0.5;
+          const alpha = p.a * (0.3 + 0.7 * twinkle);
+
+          // Smooth color lerp: violet → green
+          const r = Math.round(139 * (1-calm) + 86 * calm);
+          const g = Math.round(127 * (1-calm) + 224 * calm);
+          const b = Math.round(255 * (1-calm) + 154 * calm);
+
+          ctx.beginPath();
+          ctx.arc(((px%w)+w)%w, ((py%h)+h)%h, p.r, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(${r},${g},${b},${alpha.toFixed(3)})`;
+          ctx.fill();
+        }
+        requestAnimationFrame(draw);
+      }
+      requestAnimationFrame(draw);
+    })();
+  </script>
+
+</body>
+</html>

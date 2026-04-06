@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aura — Попробуй прямо сейчас</title>
+  <meta name="description" content="60 секунд дыхания. Бесплатно. Прямо в браузере.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+    :root{--bg:#020108;--primary:#8B7FFF;--accent:#5CE1E6;--green:#56E09A;--warm:#FFB156;--rose:#FF6B8A;--text:#F0ECF9;--text-muted:#8A84A8;--text-dim:#5A5478}
+    html,body{height:100%}
+    body{font-family:'Inter',-apple-system,sans-serif;background:var(--bg);color:var(--text);overflow:hidden;display:flex;align-items:center;justify-content:center}
+
+    #bg{position:fixed;inset:0;pointer-events:none}
+
+    .screen{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;opacity:0;pointer-events:none;transition:opacity .8s ease}
+    .screen.active{opacity:1;pointer-events:auto}
+
+    h1{font-size:clamp(22px,5vw,32px);font-weight:300;line-height:1.3;margin-bottom:20px}
+    h1 em{font-style:normal;color:var(--primary)}
+    h1 .green{color:var(--green)}
+    .sub{font-size:15px;color:var(--text-muted);font-weight:300;margin-bottom:32px;line-height:1.6;max-width:380px}
+
+    .mood-options{display:flex;flex-direction:column;gap:12px;width:100%;max-width:320px}
+    .mood-btn{padding:16px;border-radius:16px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.03);color:var(--text);font-size:16px;font-weight:300;cursor:pointer;transition:border-color .2s,background .2s,transform .1s;-webkit-tap-highlight-color:transparent}
+    .mood-btn:hover{border-color:rgba(139,127,255,.2);background:rgba(139,127,255,.06)}
+    .mood-btn:active{transform:scale(.98)}
+
+    .orb-wrap{position:relative;width:160px;height:160px;margin-bottom:24px}
+    .orb{width:100%;height:100%;border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.2),rgba(139,127,255,.1),transparent);box-shadow:0 0 60px rgba(139,127,255,.3),0 0 120px rgba(139,127,255,.08);transition:transform ease,box-shadow .3s ease}
+
+    .phase-label{font-size:20px;font-weight:300;color:var(--text);min-height:30px;margin-bottom:8px;transition:opacity .3s ease}
+    .timer-text{font-size:13px;color:var(--text-dim);margin-bottom:12px}
+    .progress-bar{width:200px;height:3px;border-radius:2px;background:rgba(255,255,255,.06);overflow:hidden;margin-bottom:24px}
+    .progress-fill{height:100%;border-radius:2px;background:var(--primary);transition:width .3s linear}
+    .guidance{font-size:15px;color:var(--text-dim);font-weight:300;min-height:24px;transition:opacity .4s ease}
+
+    /* Result screens */
+    .result-orb{width:80px;height:80px;border-radius:50%;margin-bottom:20px;animation:orbPulse 4s ease-in-out infinite}
+    .result-orb.improved{background:radial-gradient(circle,rgba(86,224,154,.25),rgba(86,224,154,.08),transparent);box-shadow:0 0 50px rgba(86,224,154,.3)}
+    .result-orb.neutral{background:radial-gradient(circle,rgba(255,255,255,.15),rgba(139,127,255,.06),transparent);box-shadow:0 0 40px rgba(139,127,255,.2)}
+    @keyframes orbPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
+
+    .effort-tag{font-size:13px;color:var(--text-dim);letter-spacing:1px;margin-bottom:24px}
+
+    .result-moods{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;max-width:340px;margin-bottom:28px}
+    .result-mood{padding:10px 18px;border-radius:24px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.03);font-size:14px;color:var(--text-muted);cursor:pointer;transition:all .2s;-webkit-tap-highlight-color:transparent}
+    .result-mood:hover{border-color:rgba(86,224,154,.2);color:var(--text)}
+    .result-mood.selected{border-color:var(--green);color:var(--green);background:rgba(86,224,154,.08)}
+
+    /* Conversion */
+    .loss-text{font-size:13px;color:var(--text-dim);margin-bottom:24px;font-weight:300}
+
+    .cta{display:inline-block;padding:16px 40px;border-radius:24px;font-size:16px;font-weight:600;color:#fff;background:linear-gradient(135deg,var(--primary),var(--accent));text-decoration:none;transition:transform .12s,box-shadow .3s;box-shadow:0 0 30px rgba(139,127,255,.25);border:none;cursor:pointer}
+    .cta:hover{transform:scale(1.04);box-shadow:0 0 50px rgba(139,127,255,.45)}
+    .cta:active{transform:scale(.97)}
+    .cta.green{background:linear-gradient(135deg,var(--green),var(--accent))}
+    .cta-micro{display:block;margin-top:12px;font-size:13px;color:var(--text-dim)}
+
+    /* Email capture */
+    .email-row{display:flex;gap:8px;width:100%;max-width:360px;margin-bottom:12px}
+    .email-input{flex:1;padding:14px 18px;border-radius:16px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.04);color:var(--text);font-size:15px;font-family:inherit;font-weight:300;outline:none;transition:border-color .2s}
+    .email-input:focus{border-color:rgba(139,127,255,.3)}
+    .email-input::placeholder{color:var(--text-dim)}
+    .email-submit{padding:14px 24px;border-radius:16px;border:none;background:linear-gradient(135deg,var(--green),var(--accent));color:#fff;font-size:15px;font-weight:600;cursor:pointer;transition:transform .1s;white-space:nowrap}
+    .email-submit:active{transform:scale(.97)}
+
+    .link-row{display:flex;gap:16px;justify-content:center;margin-top:20px}
+    .text-link{color:var(--text-dim);font-size:13px;text-decoration:underline;text-decoration-color:rgba(255,255,255,.12);cursor:pointer;transition:color .2s;-webkit-tap-highlight-color:transparent}
+    .text-link:hover{color:var(--text-muted)}
+
+    /* Share */
+    .share-section{margin-top:20px;padding-top:20px;border-top:1px solid rgba(255,255,255,.04);width:100%;max-width:360px}
+    .share-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:12px;border-radius:12px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.02);color:var(--text-muted);font-size:14px;font-weight:300;cursor:pointer;transition:border-color .2s,color .2s}
+    .share-btn:hover{border-color:rgba(139,127,255,.15);color:var(--text)}
+    .share-copied{color:var(--green) !important;border-color:rgba(86,224,154,.2) !important}
+
+    /* Thank you state */
+    .thankyou{display:none;text-align:center}
+    .thankyou.show{display:block}
+    .thankyou p{font-size:15px;color:var(--text-muted);font-weight:300;line-height:1.6}
+
+    @media(max-width:400px){
+      .email-row{flex-direction:column}
+      .email-submit{width:100%}
+    }
+  </style>
+</head>
+<body>
+
+  <canvas id="bg"></canvas>
+
+  <!-- Screen 1: Mood -->
+  <div class="screen active" id="s-mood">
+    <h1>Что ты сейчас <em>чувствуешь</em>?</h1>
+    <p class="sub">Одно нажатие — и начнём. 60 секунд.</p>
+    <div class="mood-options">
+      <button class="mood-btn" data-mood="anxiety">Тревога</button>
+      <button class="mood-btn" data-mood="overload">Перегрузка</button>
+      <button class="mood-btn" data-mood="fatigue">Усталость</button>
+    </div>
+  </div>
+
+  <!-- Screen 2: Session -->
+  <div class="screen" id="s-session">
+    <div class="orb-wrap"><div class="orb" id="session-orb"></div></div>
+    <div class="phase-label" id="phase-label">Приготовься</div>
+    <div class="timer-text" id="timer-text"></div>
+    <div class="progress-bar"><div class="progress-fill" id="progress"></div></div>
+    <div class="guidance" id="guidance"></div>
+  </div>
+
+  <!-- Screen 3: How do you feel -->
+  <div class="screen" id="s-result">
+    <div class="result-orb neutral"></div>
+    <div class="effort-tag" id="effort-tag"></div>
+    <h1>Как сейчас внутри?</h1>
+    <div class="result-moods">
+      <button class="result-mood" data-after="calm">Спокойнее</button>
+      <button class="result-mood" data-after="same">Так же</button>
+      <button class="result-mood" data-after="worse">Хуже</button>
+    </div>
+  </div>
+
+  <!-- Screen 4: Improved → phased capture -->
+  <div class="screen" id="s-improved">
+    <!-- Phase A: Validation (appears first, 2s) -->
+    <div id="imp-phase-a">
+      <div class="result-orb improved"></div>
+      <h1><span class="green">Стало легче.</span></h1>
+      <p class="sub">Это твоё состояние. Ты сам его создал за <span id="imp-breaths">8</span> дыханий.</p>
+    </div>
+
+    <!-- Phase B: Loss frame + capture (appears after 2.5s) -->
+    <div id="imp-phase-b" style="opacity:0;transition:opacity .8s ease;margin-top:8px">
+      <p class="loss-text">Это ощущение уйдёт через 20–30 минут.</p>
+      <div class="email-row" id="email-row">
+        <input type="email" class="email-input" id="email-input" placeholder="Твой email" autocomplete="email">
+        <button class="email-submit" id="email-submit">Запомнить</button>
+      </div>
+      <p class="cta-micro" id="capture-hint">Чтобы вернуться к этому состоянию</p>
+    </div>
+
+    <!-- Phase C: After email (replaces B) -->
+    <div id="imp-phase-c" style="display:none;margin-top:12px">
+      <p class="sub" style="margin-bottom:16px">Мы напомним, когда станет тяжело.<br>
+        <a href="https://mymeditator.ru" style="color:var(--green);text-decoration:none">Скачать приложение →</a>
+      </p>
+      <span class="text-link" id="do-second-session">Продышать ещё раз — закрепить эффект</span>
+    </div>
+
+    <!-- Always visible: share + again -->
+    <div class="share-section" id="share-section-good">
+      <p style="font-size:12px;color:var(--text-dim);margin-bottom:10px;font-weight:300">Кому сейчас тоже тяжело?</p>
+      <button class="share-btn" id="share-btn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+        Отправить минуту спокойствия
+      </button>
+    </div>
+    <div class="link-row">
+      <span class="text-link" id="try-again-good">Другое состояние</span>
+    </div>
+  </div>
+
+  <!-- Screen 6: Post-second-session realization -->
+  <div class="screen" id="s-realization">
+    <div class="result-orb improved"></div>
+    <div class="effort-tag" id="total-breaths-tag"></div>
+    <h1>Два раза подряд.<br><span class="green">Это не случайность.</span></h1>
+    <p class="sub">Ты умеешь это. Тело запоминает.<br>Каждый раз будет проще.</p>
+    <div id="realization-actions" style="width:100%;max-width:360px">
+      <a href="https://mymeditator.ru" class="cta green" style="width:100%;display:block;text-align:center">Забрать с собой</a>
+      <span class="cta-micro">Приложение. Бесплатно. Твоё пространство.</span>
+    </div>
+    <div class="share-section">
+      <p style="font-size:12px;color:var(--text-dim);margin-bottom:10px;font-weight:300">Ты только что помог себе. Может, кому-то тоже нужно?</p>
+      <button class="share-btn" id="share-realization">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+        Отправить минуту спокойствия
+      </button>
+    </div>
+  </div>
+
+  <!-- Screen 7: Share feedback -->
+  <div class="screen" id="s-shared">
+    <div class="result-orb improved"></div>
+    <h1><span class="green">Отправлено.</span></h1>
+    <p class="sub">Ты только что дал кому-то шанс<br>почувствовать себя лучше.</p>
+    <div class="link-row" style="margin-top:8px">
+      <span class="text-link" id="back-from-shared">Вернуться</span>
+    </div>
+  </div>
+
+  <!-- Screen 5: Same/worse -->
+  <div class="screen" id="s-neutral">
+    <div class="result-orb neutral"></div>
+    <h1>Иногда нужно<br>чуть больше</h1>
+    <p class="sub">Попробуй ещё раз — часто второй подход работает лучше первого.</p>
+    <button class="cta" id="retry-btn">Продышать ещё раз</button>
+    <span class="cta-micro">Тот же ритм. Те же 60 секунд.</span>
+    <div class="link-row" style="margin-top:24px">
+      <span class="text-link" id="try-again-neutral">Другое состояние</span>
+      <span class="text-link" id="share-neutral">Отправить другу</span>
+      <a href="https://mymeditator.ru" class="text-link">Полная версия</a>
+    </div>
+  </div>
+
+  <script>
+    let currentMood = 'anxiety';
+    let sessionDuration = 60;
+    let elapsed = 0;
+    let totalCycles = 0;
+    let allTimeBreaths = 0;
+
+    const screens = {};
+    document.querySelectorAll('.screen').forEach(s => { screens[s.id.replace('s-','')] = s; });
+    function show(name) { Object.values(screens).forEach(s=>s.classList.remove('active')); screens[name].classList.add('active'); }
+
+    const patterns = {
+      anxiety:  { inhale:4, hold:7, exhale:8 },
+      overload: { inhale:3, hold:0, exhale:4 },
+      fatigue:  { inhale:4, hold:4, exhale:4 },
+    };
+    const cues = {
+      anxiety:  ['Каждый выдох уносит напряжение','Расслабь плечи','Отпусти челюсть','Ты в безопасности'],
+      overload: ['Просто дыши','Ничего не нужно решать','Замедляемся','Тишина внутри'],
+      fatigue:  ['Мягко возвращай внимание','Почувствуй стопы','Расслабь лицо','Энергия возвращается'],
+    };
+
+    // ── Background ─────────────────────────────────────────
+    (()=>{
+      const c=document.getElementById('bg'),ctx=c.getContext('2d');let w,h,pts=[];
+      function resize(){w=c.width=innerWidth;h=c.height=innerHeight}resize();addEventListener('resize',resize);
+      for(let i=0;i<40;i++)pts.push({x:Math.random(),y:Math.random(),r:.3+Math.random()*1,a:.05+Math.random()*.12,p:Math.random()*Math.PI*2,s:.2+Math.random()*.6});
+      function draw(t){ctx.clearRect(0,0,w,h);const time=t*.001;for(const p of pts){const tw=(Math.sin(time*.7+p.p)+1)*.5;ctx.beginPath();ctx.arc((p.x+Math.sin(time*.06*p.s+p.p)*.02)%1*w,(p.y+Math.cos(time*.04*p.s+p.p)*.015)%1*h,p.r,0,Math.PI*2);ctx.fillStyle=`rgba(139,127,255,${(p.a*(.3+.7*tw)).toFixed(3)})`;ctx.fill()}requestAnimationFrame(draw)}requestAnimationFrame(draw)
+    })();
+
+    // ── Mood selection ─────────────────────────────────────
+    document.querySelectorAll('.mood-btn').forEach(b=>b.addEventListener('click',()=>{currentMood=b.dataset.mood;show('session');startSession()}));
+    const urlMood=new URLSearchParams(location.search).get('mood');
+    if(urlMood&&patterns[urlMood]){currentMood=urlMood;setTimeout(()=>{show('session');startSession()},300)}
+
+    // ── Session ────────────────────────────────────────────
+    function startSession(){
+      const orb=document.getElementById('session-orb'),label=document.getElementById('phase-label');
+      const timerEl=document.getElementById('timer-text'),progress=document.getElementById('progress');
+      const guide=document.getElementById('guidance'),pat=patterns[currentMood],cueList=cues[currentMood];
+      elapsed=0;totalCycles=0;let guideIdx=0;
+      const cycleSec=pat.inhale+pat.hold+pat.exhale;
+      label.textContent='Приготовься';guide.textContent='';progress.style.width='0%';orb.style.transform='scale(1)';
+      timerEl.textContent=sessionDuration+'с';
+
+      setTimeout(()=>runCycle(),2000);
+      setTimeout(()=>{guide.textContent=cueList[0];guide.style.opacity='1'},3000);
+
+      function runCycle(){
+        if(elapsed>=sessionDuration){endSession();return}
+        label.textContent='Вдох';orb.style.transitionDuration=pat.inhale+'s';orb.style.transform='scale(1.15)';
+        orb.style.boxShadow='0 0 80px rgba(139,127,255,.5),0 0 150px rgba(139,127,255,.15)';
+        setTimeout(()=>{
+          if(pat.hold>0){label.textContent='Задержи';setTimeout(doExhale,pat.hold*1000)}else doExhale()
+        },pat.inhale*1000);
+
+        function doExhale(){
+          label.textContent='Выдох';orb.style.transitionDuration=pat.exhale+'s';orb.style.transform='scale(1)';
+          orb.style.boxShadow='0 0 50px rgba(139,127,255,.25),0 0 100px rgba(139,127,255,.06)';
+          setTimeout(()=>{
+            totalCycles++;elapsed+=cycleSec;
+            progress.style.width=Math.min(100,elapsed/sessionDuration*100)+'%';
+            timerEl.textContent=Math.max(0,sessionDuration-elapsed)+'с';
+            if(totalCycles%2===0){guideIdx=(guideIdx+1)%cueList.length;guide.style.opacity='0';setTimeout(()=>{guide.textContent=cueList[guideIdx];guide.style.opacity='1'},200)}
+            runCycle()
+          },pat.exhale*1000)
+        }
+      }
+    }
+
+    function endSession(){
+      document.getElementById('phase-label').textContent='';
+      document.getElementById('progress').style.width='100%';
+      document.getElementById('guidance').style.opacity='0';
+      allTimeBreaths += totalCycles;
+      document.getElementById('effort-tag').textContent=totalCycles+' '+(totalCycles===1?'дыхание':'дыханий');
+
+      // After second+ improved session → realization screen
+      if (sessionCount >= 1) {
+        document.getElementById('total-breaths-tag').textContent = allTimeBreaths + ' дыханий за сегодня';
+        setTimeout(()=>show('realization'), 1500);
+      } else {
+        setTimeout(()=>show('result'), 1500);
+      }
+    }
+
+    // ── Session count ──────────────────────────────────────
+    let sessionCount = 0;
+
+    // ── Result → routing with phased reveal ────────────────
+    document.querySelectorAll('.result-mood').forEach(b=>b.addEventListener('click',()=>{
+      document.querySelectorAll('.result-mood').forEach(x=>x.classList.remove('selected'));
+      b.classList.add('selected');
+      setTimeout(()=>{
+        const a=b.dataset.after;
+        if(a==='calm') showImproved(); else show('neutral');
+      },500);
+    }));
+
+    function showImproved() {
+      sessionCount++;
+      document.getElementById('imp-breaths').textContent = totalCycles;
+
+      // Reset phases
+      document.getElementById('imp-phase-b').style.opacity = '0';
+      document.getElementById('imp-phase-c').style.display = 'none';
+      document.getElementById('email-row').style.display = '';
+      document.getElementById('capture-hint').style.display = '';
+
+      show('improved');
+
+      // Phase B: loss frame + capture fades in after 2.5s
+      setTimeout(() => {
+        if (document.getElementById('imp-phase-b'))
+          document.getElementById('imp-phase-b').style.opacity = '1';
+      }, 2500);
+    }
+
+    // ── Email capture ──────────────────────────────────────
+    let emailCaptured = false;
+    document.getElementById('email-submit').addEventListener('click',()=>{
+      const email=document.getElementById('email-input').value.trim();
+      if(!email||!email.includes('@'))return;
+      emailCaptured = true;
+
+      // Production: POST /api/auth/register or /api/leads
+      document.getElementById('email-row').style.display='none';
+      document.getElementById('capture-hint').style.display='none';
+      document.getElementById('imp-phase-c').style.display='block';
+    });
+
+    // ── Second session (loop creation) ─────────────────────
+    document.getElementById('do-second-session').addEventListener('click', () => {
+      show('session');
+      startSession();
+    });
+
+    // ── Retry from neutral ─────────────────────────────────
+    document.getElementById('retry-btn').addEventListener('click', () => {
+      show('session');
+      startSession();
+    });
+
+    // ── Share ──────────────────────────────────────────────
+    const shareSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>';
+
+    let lastScreenBeforeShare = 'improved';
+
+    function doShare(btnEl, fromScreen) {
+      const url = 'https://mymeditator.ru/try?mood=' + currentMood;
+      const text = 'Мне помогло за минуту. Попробуй тоже.';
+      lastScreenBeforeShare = fromScreen || 'improved';
+
+      if (navigator.share) {
+        navigator.share({ title: 'Aura', text, url }).then(() => {
+          show('shared');
+        }).catch(() => {});
+      } else {
+        navigator.clipboard.writeText(url).then(() => {
+          show('shared');
+        });
+      }
+    }
+
+    document.getElementById('share-btn').addEventListener('click', function() { doShare(this, 'improved'); });
+    document.getElementById('share-neutral').addEventListener('click', function() { doShare(this, 'neutral'); });
+    document.getElementById('share-realization').addEventListener('click', function() { doShare(this, 'realization'); });
+    document.getElementById('back-from-shared').addEventListener('click', () => show(lastScreenBeforeShare));
+
+    // ── Try again (different mood) ─────────────────────────
+    document.getElementById('try-again-good').addEventListener('click', () => show('mood'));
+    document.getElementById('try-again-neutral').addEventListener('click', () => show('mood'));
+  </script>
+
+</body>
+</html>

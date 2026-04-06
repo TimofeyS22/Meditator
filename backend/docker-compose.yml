@@ -1,35 +1,37 @@
+version: "3.9"
+
 services:
-  postgres:
-    image: pgvector/pgvector:pg16
+  db:
+    image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-meditator}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-meditator_secret}
-      POSTGRES_DB: ${POSTGRES_DB:-meditator}
-    ports:
-      - "5433:5432"
+      POSTGRES_DB: meditator
+      POSTGRES_USER: meditator
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-meditator_secret}
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./initdb:/docker-entrypoint-initdb.d
+    ports:
+      - "127.0.0.1:5433:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-meditator}"]
+      test: ["CMD-SHELL", "pg_isready -U meditator"]
       interval: 5s
       timeout: 3s
       retries: 5
 
-  backend:
+  api:
     build: .
     restart: unless-stopped
-    ports:
-      - "8080:8080"
-    env_file:
-      - .env
     depends_on:
-      postgres:
+      db:
         condition: service_healthy
-    volumes:
-      - ./app:/code/app
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080", "--reload"]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://meditator:${DB_PASSWORD:-meditator_secret}@db:5432/meditator
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:8002}
+    ports:
+      - "8002:8000"
 
 volumes:
   pgdata:

@@ -1,136 +1,103 @@
-import uuid as uuid_mod
+import time
+import logging
 from contextlib import asynccontextmanager
-from pathlib import Path
 
-import structlog
-from fastapi import Depends, FastAPI, Request
-from fastapi.staticfiles import StaticFiles
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from slowapi import _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
-from slowapi.middleware import SlowAPIMiddleware
-from sqlalchemy import text
 
-from app.config import settings
-from app.database import async_session, engine, get_db
-from app.logging_config import setup_logging
-from app.models import Base
-from app.routers import (
-    admin,
-    ai,
-    auth,
-    biometrics,
-    chat,
-    community,
-    courses,
-    garden,
-    live_session,
-    meditations,
-    mood_entries,
-    notifications,
-    pair_messages,
-    partnerships,
-    profiles,
-    sessions,
-    subscriptions,
+from app.database import engine, Base
+from app.config import settings, _DEFAULT_SECRET, logger
+from app.routes import (
+    auth_router, profile_router, sessions_router,
+    mood_router, companion_router, meditations_router, tts_router,
 )
-from app.rate_limit import limiter
-from app.seed import seed_meditations
-
-setup_logging()
-logger = structlog.get_logger()
-
-if settings.sentry_dsn:
-    import sentry_sdk
-
-    sentry_sdk.init(
-        dsn=settings.sentry_dsn,
-        environment=settings.environment,
-        traces_sample_rate=0.1 if settings.environment == "prod" else 1.0,
-        profiles_sample_rate=0.1 if settings.environment == "prod" else 1.0,
-    )
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    if settings.environment == "dev":
-        async with engine.begin() as conn:
-            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-            await conn.run_sync(Base.metadata.create_all)
-    async with async_session() as db:
-        count = await seed_meditations(db)
-        if count:
-            logger.info("seeded_meditations", count=count)
+    if settings.jwt_secret == _DEFAULT_SECRET:
+        logger.warning(
+            "JWT_SECRET is using the default value. "
+            "Set a strong secret via environment variable for production."
+        )
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    logger.info("Database tables verified")
     yield
     await engine.dispose()
 
 
-app = FastAPI(
-    title="Meditator API",
-    version="1.0.0",
-    lifespan=lifespan,
-    docs_url="/docs" if settings.environment == "dev" else None,
-    redoc_url=None,
-)
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-app.add_middleware(SlowAPIMiddleware)
+app = FastAPI(title="Aura API", version="2.1.0", lifespan=lifespan)
 
+# ── CORS (no wildcard + credentials) ─────────────────────────────────────────
+
+origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.allowed_origins,
-    allow_credentials=True,
+    allow_origins=origins,
+    allow_credentials=len(origins) > 0 and "*" not in origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# ── Simple in-memory rate limiter ─────────────────────────────────────────────
+
+_rate_buckets: dict[str, list[float]] = {}
 
 @app.middleware("http")
-async def request_id_middleware(request: Request, call_next):
-    request_id = request.headers.get("X-Request-ID", str(uuid_mod.uuid4()))
-    structlog.contextvars.clear_contextvars()
-    structlog.contextvars.bind_contextvars(request_id=request_id)
+async def rate_limit_middleware(request: Request, call_next):
+    if request.url.path.startswith("/api/auth/"):
+        client_ip = request.client.host if request.client else "unknown"
+        now = time.time()
+        window = 60.0
+        bucket = _rate_buckets.setdefault(client_ip, [])
+        bucket[:] = [t for t in bucket if now - t < window]
+
+        if len(bucket) >= settings.rate_limit_per_minute:
+            logger.warning("Rate limit exceeded for %s on %s", client_ip, request.url.path)
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "Too many requests. Try again later."},
+            )
+        bucket.append(now)
+
+    return await call_next(request)
+
+# ── Request logging ───────────────────────────────────────────────────────────
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start = time.time()
     response = await call_next(request)
-    response.headers["X-Request-ID"] = request_id
+    elapsed = (time.time() - start) * 1000
+    logger.info(
+        "%s %s %d %.0fms",
+        request.method, request.url.path, response.status_code, elapsed,
+    )
     return response
 
+# ── Routers ───────────────────────────────────────────────────────────────────
 
-@app.exception_handler(Exception)
-async def generic_exception_handler(request: Request, exc: Exception):
-    logger.exception("unhandled_error", path=str(request.url.path), method=request.method)
-    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
-
-
-app.include_router(auth.router)
-app.include_router(profiles.router)
-app.include_router(meditations.router)
-app.include_router(sessions.router)
-app.include_router(biometrics.router)
-app.include_router(mood_entries.router)
-app.include_router(garden.router)
-app.include_router(partnerships.router)
-app.include_router(pair_messages.router)
-app.include_router(ai.router)
-app.include_router(chat.router)
-app.include_router(subscriptions.router)
-app.include_router(admin.router)
-app.include_router(notifications.router)
-app.include_router(live_session.router)
-app.include_router(courses.router)
-app.include_router(community.router)
-
-
-_audio_dir = Path(__file__).resolve().parent.parent / "assets" / "audio"
-if _audio_dir.is_dir():
-    app.mount("/audio", StaticFiles(directory=str(_audio_dir)), name="audio")
+app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
+app.include_router(profile_router, prefix="/api/profile", tags=["profile"])
+app.include_router(sessions_router, prefix="/api/sessions", tags=["sessions"])
+app.include_router(mood_router, prefix="/api/mood", tags=["mood"])
+app.include_router(companion_router, prefix="/api/companion", tags=["companion"])
+app.include_router(meditations_router, prefix="/api/meditations", tags=["meditations"])
+app.include_router(tts_router, prefix="/api/tts", tags=["tts"])
 
 
 @app.get("/health")
-async def health(db: AsyncSession = Depends(get_db)):
+async def health():
+    from sqlalchemy import text
     try:
-        await db.execute(text("SELECT 1"))
-        return {"status": "ok", "db": "connected"}
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        db_ok = True
     except Exception:
-        return JSONResponse(status_code=503, content={"status": "error", "db": "disconnected"})
+        db_ok = False
+
+    status = "ok" if db_ok else "degraded"
+    return {"status": status, "version": "2.1.0", "db": db_ok}

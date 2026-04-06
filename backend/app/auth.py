@@ -1,119 +1,72 @@
 from datetime import datetime, timedelta, timezone
-from uuid import UUID, uuid4
 
-import bcrypt
-import structlog
-from jose import JWTError, jwt
-from sqlalchemy import select, update
+from jose import jwt, JWTError
+from passlib.context import CryptContext
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from app.config import settings
+from app.database import get_db
+from app.models import User
 
-logger = structlog.get_logger()
+pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
+bearer = HTTPBearer()
 
 
 def hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+    return pwd_ctx.hash(password)
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return bcrypt.checkpw(plain.encode(), hashed.encode())
+    return pwd_ctx.verify(plain, hashed)
 
 
-def create_access_token(user_id: UUID) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_expire_minutes)
+def create_access_token(user_id: str) -> str:
+    exp = datetime.now(timezone.utc) + timedelta(minutes=settings.jwt_access_minutes)
     return jwt.encode(
-        {"sub": str(user_id), "exp": expire, "type": "access"},
+        {"sub": user_id, "type": "access", "exp": exp},
         settings.jwt_secret,
         algorithm=settings.jwt_algorithm,
     )
 
 
-def _encode_refresh(user_id: UUID, jti: str, family: str) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(days=settings.refresh_token_expire_days)
+def create_refresh_token(user_id: str) -> str:
+    exp = datetime.now(timezone.utc) + timedelta(days=settings.jwt_refresh_days)
     return jwt.encode(
-        {"sub": str(user_id), "exp": expire, "type": "refresh", "jti": jti, "family": family},
+        {"sub": user_id, "type": "refresh", "exp": exp},
         settings.jwt_secret,
         algorithm=settings.jwt_algorithm,
     )
 
 
-async def create_refresh_token(user_id: UUID, db: AsyncSession, family: str | None = None) -> str:
-    from app.models import RefreshToken
-
-    jti = str(uuid4())
-    family = family or str(uuid4())
-    expires_at = datetime.now(timezone.utc) + timedelta(days=settings.refresh_token_expire_days)
-
-    token_row = RefreshToken(user_id=user_id, jti=jti, family=family, expires_at=expires_at)
-    db.add(token_row)
-    await db.flush()
-
-    return _encode_refresh(user_id, jti, family)
-
-
-async def rotate_refresh_token(old_token: str, db: AsyncSession) -> tuple[UUID, str, str] | None:
-    """Validate and rotate a refresh token. Returns (user_id, new_access, new_refresh) or None."""
-    from app.models import RefreshToken
-
-    payload = _decode_raw(old_token, expected_type="refresh")
-    if payload is None:
-        return None
-
-    user_id = UUID(payload["sub"])
-    jti = payload.get("jti")
-    family = payload.get("family")
-
-    if not jti or not family:
-        return None
-
-    row = await db.execute(
-        select(RefreshToken).where(RefreshToken.jti == jti)
-    )
-    token_row = row.scalar_one_or_none()
-
-    if token_row is None:
-        return None
-
-    if token_row.revoked:
-        logger.warning("refresh_token_reuse_detected", family=family, user_id=str(user_id))
-        await db.execute(
-            update(RefreshToken).where(RefreshToken.family == family).values(revoked=True)
-        )
-        await db.commit()
-        return None
-
-    token_row.revoked = True
-    await db.flush()
-
-    new_access = create_access_token(user_id)
-    new_refresh = await create_refresh_token(user_id, db, family=family)
-    await db.commit()
-
-    return user_id, new_access, new_refresh
-
-
-async def revoke_family(family: str, db: AsyncSession) -> None:
-    from app.models import RefreshToken
-    await db.execute(
-        update(RefreshToken).where(RefreshToken.family == family).values(revoked=True)
-    )
-    await db.commit()
-
-
-def decode_token(token: str, expected_type: str = "access") -> UUID | None:
-    payload = _decode_raw(token, expected_type)
-    if payload is None:
-        return None
-    sub = payload.get("sub")
-    return UUID(sub) if sub else None
-
-
-def _decode_raw(token: str, expected_type: str) -> dict | None:
+def decode_token(token: str, expected_type: str = "access") -> str | None:
     try:
-        payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+        payload = jwt.decode(
+            token, settings.jwt_secret, algorithms=[settings.jwt_algorithm],
+        )
         if payload.get("type") != expected_type:
             return None
-        return payload
-    except (JWTError, ValueError):
+        return payload.get("sub")
+    except JWTError:
         return None
+
+
+async def get_current_user(
+    cred: HTTPAuthorizationCredentials = Depends(bearer),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    user_id = decode_token(cred.credentials, "access")
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        )
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found",
+        )
+    return user

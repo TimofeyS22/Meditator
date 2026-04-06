@@ -1,119 +1,203 @@
-import 'dart:async';
-
 import 'package:dio/dio.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:meditator/core/config/env.dart';
+
+const _accessKey = 'access_token';
+const _refreshKey = 'refresh_token';
 
 class ApiClient {
-  ApiClient._();
-  static final ApiClient instance = ApiClient._();
+  late final Dio _dio;
+  final _storage = const FlutterSecureStorage();
 
-  static const _kAccessToken = 'auth_access_token';
-  static const _kRefreshToken = 'auth_refresh_token';
+  ApiClient() {
+    final baseUrl = dotenv.env['API_BASE_URL'] ?? 'http://localhost:8000';
 
-  static const _storage = FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: true),
-  );
+    _dio = Dio(BaseOptions(
+      baseUrl: baseUrl,
+      connectTimeout: const Duration(seconds: 15),
+      receiveTimeout: const Duration(seconds: 30),
+      headers: {'Content-Type': 'application/json'},
+    ));
 
-  String? _accessToken;
-  String? _refreshToken;
-  bool _loaded = false;
-
-  Completer<bool>? _refreshLock;
-
-  late final Dio dio = Dio(BaseOptions(
-    baseUrl: Env.apiUrl,
-    connectTimeout: const Duration(seconds: 15),
-    receiveTimeout: const Duration(seconds: 60),
-    headers: {'Content-Type': 'application/json'},
-  ))
-    ..interceptors.add(InterceptorsWrapper(
+    _dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) async {
-        await _ensureLoaded();
-        if (_accessToken != null && _accessToken!.isNotEmpty) {
-          options.headers['Authorization'] = 'Bearer $_accessToken';
-        }
+        try {
+          final token = await _storage.read(key: _accessKey);
+          if (token != null) {
+            options.headers['Authorization'] = 'Bearer $token';
+          }
+        } catch (_) {}
         handler.next(options);
       },
       onError: (error, handler) async {
-        if (error.response?.statusCode == 401 &&
-            error.requestOptions.extra['_retried'] != true) {
-          final refreshed = await _tryRefreshSafe();
-          if (refreshed) {
-            error.requestOptions.extra['_retried'] = true;
-            error.requestOptions.headers['Authorization'] =
-                'Bearer $_accessToken';
-            try {
-              final resp = await dio.fetch(error.requestOptions);
+        if (error.response?.statusCode == 401) {
+          try {
+            final ok = await _tryRefresh();
+            if (ok) {
+              final token = await _storage.read(key: _accessKey);
+              error.requestOptions.headers['Authorization'] = 'Bearer $token';
+              final resp = await _dio.fetch(error.requestOptions);
               return handler.resolve(resp);
-            } catch (e) {
-              return handler.reject(error);
             }
-          }
+          } catch (_) {}
         }
         handler.next(error);
       },
     ));
-
-  Future<void> _ensureLoaded() async {
-    if (_loaded) return;
-    _accessToken = await _storage.read(key: _kAccessToken);
-    _refreshToken = await _storage.read(key: _kRefreshToken);
-    _loaded = true;
-  }
-
-  Future<bool> _tryRefreshSafe() async {
-    if (_refreshLock != null) {
-      return _refreshLock!.future;
-    }
-    _refreshLock = Completer<bool>();
-    try {
-      final result = await _tryRefresh();
-      _refreshLock!.complete(result);
-      return result;
-    } catch (e) {
-      _refreshLock!.complete(false);
-      return false;
-    } finally {
-      _refreshLock = null;
-    }
   }
 
   Future<bool> _tryRefresh() async {
-    await _ensureLoaded();
-    if (_refreshToken == null || _refreshToken!.isEmpty) return false;
+    final refresh = await _storage.read(key: _refreshKey);
+    if (refresh == null) return false;
     try {
-      final resp = await Dio(BaseOptions(baseUrl: Env.apiUrl)).post(
-        '/auth/refresh',
-        data: {'refresh_token': _refreshToken},
+      final resp = await Dio(BaseOptions(
+        baseUrl: _dio.options.baseUrl,
+        headers: {'Content-Type': 'application/json'},
+      )).post('/api/auth/refresh', data: {'refresh_token': refresh});
+      await saveTokens(
+        resp.data['access_token'] as String,
+        resp.data['refresh_token'] as String,
       );
-      if (resp.statusCode == 200) {
-        await saveTokens(
-          resp.data['access_token'] as String,
-          resp.data['refresh_token'] as String,
-        );
-        return true;
-      }
-    } catch (_) {}
-    return false;
+      return true;
+    } catch (_) {
+      await clearTokens();
+      return false;
+    }
   }
 
   Future<void> saveTokens(String access, String refresh) async {
-    _accessToken = access;
-    _refreshToken = refresh;
-    await _storage.write(key: _kAccessToken, value: access);
-    await _storage.write(key: _kRefreshToken, value: refresh);
+    try {
+      await _storage.write(key: _accessKey, value: access);
+      await _storage.write(key: _refreshKey, value: refresh);
+    } catch (_) {}
   }
 
   Future<void> clearTokens() async {
-    _accessToken = null;
-    _refreshToken = null;
-    await _storage.delete(key: _kAccessToken);
-    await _storage.delete(key: _kRefreshToken);
+    try {
+      await _storage.delete(key: _accessKey);
+      await _storage.delete(key: _refreshKey);
+    } catch (_) {}
   }
 
-  Future<bool> get hasToken async {
-    await _ensureLoaded();
-    return _accessToken != null && _accessToken!.isNotEmpty;
+  Future<bool> get hasTokens async {
+    try {
+      final t = await _storage.read(key: _accessKey);
+      return t != null;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // ── Auth ───────────────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> register(
+    String email, String password, {String? name}
+  ) async {
+    final resp = await _dio.post('/api/auth/register', data: {
+      'email': email,
+      'password': password,
+      if (name != null) 'display_name': name,
+    });
+    final data = resp.data as Map<String, dynamic>;
+    await saveTokens(data['access_token'] as String, data['refresh_token'] as String);
+    return data;
+  }
+
+  Future<Map<String, dynamic>> login(String email, String password) async {
+    final resp = await _dio.post('/api/auth/login', data: {
+      'email': email,
+      'password': password,
+    });
+    final data = resp.data as Map<String, dynamic>;
+    await saveTokens(data['access_token'] as String, data['refresh_token'] as String);
+    return data;
+  }
+
+  Future<void> logout() async => clearTokens();
+
+  // ── Profile ────────────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> getProfile() async {
+    final resp = await _dio.get('/api/profile');
+    return resp.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> updateProfile(Map<String, dynamic> data) async {
+    final resp = await _dio.put('/api/profile', data: data);
+    return resp.data as Map<String, dynamic>;
+  }
+
+  // ── Mood ───────────────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> createMood({
+    required String emotion,
+    int intensity = 3,
+    String? note,
+    String? context,
+  }) async {
+    final resp = await _dio.post('/api/mood', data: {
+      'emotion': emotion,
+      'intensity': intensity,
+      if (note != null) 'note': note,
+      if (context != null) 'context': context,
+    });
+    return resp.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getMoodHistory({
+    int limit = 50, int offset = 0,
+  }) async {
+    final resp = await _dio.get('/api/mood/history', queryParameters: {
+      'limit': limit,
+      'offset': offset,
+    });
+    return resp.data as Map<String, dynamic>;
+  }
+
+  // ── Sessions ───────────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> createSession({
+    required String sessionType,
+    required int durationSeconds,
+    required bool completed,
+    String? moodBefore,
+    String? moodAfter,
+    String? audioTrack,
+  }) async {
+    final resp = await _dio.post('/api/sessions', data: {
+      'session_type': sessionType,
+      'duration_seconds': durationSeconds,
+      'completed': completed,
+      if (moodBefore != null) 'mood_before': moodBefore,
+      if (moodAfter != null) 'mood_after': moodAfter,
+      if (audioTrack != null) 'audio_track': audioTrack,
+    });
+    return resp.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getStats() async {
+    final resp = await _dio.get('/api/sessions/stats');
+    return resp.data as Map<String, dynamic>;
+  }
+
+  // ── Companion ──────────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> getCompanion({
+    required String currentMood,
+    required int hour,
+    int intensity = 3,
+    int? secondsSinceLastCheckin,
+  }) async {
+    final resp = await _dio.post('/api/companion', data: {
+      'current_mood': currentMood,
+      'hour': hour,
+      'intensity': intensity,
+      if (secondsSinceLastCheckin != null)
+        'seconds_since_last_checkin': secondsSinceLastCheckin,
+    });
+    return resp.data as Map<String, dynamic>;
   }
 }
+
+final apiClientProvider = Provider<ApiClient>((_) => ApiClient());

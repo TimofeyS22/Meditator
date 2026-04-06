@@ -1,164 +1,189 @@
-import 'dart:math' as math;
-import 'dart:ui';
-
+import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:meditator/app/theme.dart';
 import 'package:meditator/core/auth/auth_service.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
-class SplashScreen extends StatefulWidget {
+// ─── Spec constants ──────────────────────────────────────────────────────────
+
+const _violet = Color(0xFFA78BFA);
+const _cosmosCenter = Color(0xFF1E1B4B);
+const _cosmosEdge = Color(0xFF020617);
+
+const _easeOutCubic = Curves.easeOutCubic;
+const _easeInOutSine = Cubic(0.37, 0.0, 0.63, 1.0);
+const _materialEase = Cubic(0.4, 0.0, 0.2, 1.0);
+
+class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
 
   @override
-  State<SplashScreen> createState() => _SplashScreenState();
+  ConsumerState<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen>
+class _SplashScreenState extends ConsumerState<SplashScreen>
     with TickerProviderStateMixin {
-  late final AnimationController _main;
-  late final AnimationController _loop;
+  // Scene 2: light appear
+  late final AnimationController _lightCtrl;
+  // Scene 2+: breathing loop
+  late final AnimationController _breathCtrl;
+  // Scene 3: gradient reveal
+  late final AnimationController _gradCtrl;
+  // Scene 3: particle stagger
+  late final AnimationController _particleCtrl;
+  // Scene 3+: cosmos drift (infinite)
+  late final AnimationController _cosmosCtrl;
+
+  late final List<_Particle> _particles;
   bool _navigated = false;
-  bool _sessionReady = false;
-  String _targetRoute = '/onboarding';
 
   @override
   void initState() {
     super.initState();
-    _main = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2600),
+    final rng = Random(42);
+    _particles = List.generate(35, (i) => _Particle.random(rng, i, 35));
+
+    _lightCtrl = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 1200),
     );
-    _loop = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 6),
-    )..repeat();
+    _breathCtrl = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 2400),
+    );
+    _gradCtrl = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 2000),
+    );
+    _particleCtrl = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 2500),
+    );
+    _cosmosCtrl = AnimationController(
+      vsync: this, duration: const Duration(seconds: 20),
+    );
 
-    _resolveTarget();
-    _main.forward();
-    _main.addStatusListener((s) {
-      if (s == AnimationStatus.completed) _tryNavigate();
-    });
+    _runSequence();
   }
 
-  Future<void> _resolveTarget() async {
-    try {
-      await AuthService.instance.tryRestoreSession();
-    } catch (_) {}
-    if (AuthService.instance.currentUser != null) {
-      _targetRoute = '/practice';
+  Future<void> _runSequence() async {
+    final auth = ref.read(authProvider);
+    final isReturning = auth.status == AuthStatus.authenticated && auth.isOnboarded;
+
+    // Returning users: shortened 3s splash. New users: full 8s experience.
+    if (isReturning) {
+      await Future.delayed(const Duration(milliseconds: 300));
+      if (!mounted) return;
+      _lightCtrl.forward();
+      _breathCtrl.repeat(reverse: true);
+      await Future.delayed(const Duration(milliseconds: 800));
+      if (!mounted) return;
+      _gradCtrl.forward();
+      _particleCtrl.forward();
+      _cosmosCtrl.repeat();
+      await Future.delayed(const Duration(milliseconds: 1500));
     } else {
-      final prefs = await SharedPreferences.getInstance();
-      final onboarded = prefs.getBool('onboarding_done') == true;
-      _targetRoute = onboarded ? '/login' : '/onboarding';
+      await Future.delayed(const Duration(milliseconds: 800));
+      if (!mounted) return;
+      _lightCtrl.forward();
+      await Future.delayed(const Duration(milliseconds: 1200));
+      if (!mounted) return;
+      _breathCtrl.repeat(reverse: true);
+      await Future.delayed(const Duration(milliseconds: 800));
+      if (!mounted) return;
+      _gradCtrl.forward();
+      _particleCtrl.forward();
+      _cosmosCtrl.repeat();
+      await Future.delayed(const Duration(milliseconds: 4200));
     }
-    _sessionReady = true;
-    _tryNavigate();
-  }
 
-  void _tryNavigate() {
-    if (_navigated || !_sessionReady || !_main.isCompleted || !mounted) return;
+    if (!mounted || _navigated) return;
     _navigated = true;
-    context.go(_targetRoute);
+
+    if (isReturning) {
+      context.go('/home');
+    } else {
+      context.go('/onboarding');
+    }
   }
 
   @override
   void dispose() {
-    _main.dispose();
-    _loop.dispose();
+    _lightCtrl.dispose();
+    _breathCtrl.dispose();
+    _gradCtrl.dispose();
+    _particleCtrl.dispose();
+    _cosmosCtrl.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final mq = MediaQuery.sizeOf(context);
-
     return Scaffold(
-      backgroundColor: const Color(0xFF020617),
+      backgroundColor: Colors.black,
       body: AnimatedBuilder(
-        animation: Listenable.merge([_main, _loop]),
-        builder: (_, __) {
-          final p = _main.value;
-          final l = _loop.value;
+        animation: Listenable.merge([
+          _lightCtrl, _breathCtrl, _gradCtrl, _particleCtrl, _cosmosCtrl,
+        ]),
+        builder: (context, _) {
+          final lightT = _easeOutCubic.transform(_lightCtrl.value);
+          final breath = _easeInOutSine.transform(_breathCtrl.value);
+          final gradT = _materialEase.transform(_gradCtrl.value);
+          final stagger = _particleCtrl.value;
+          final cosmos = _cosmosCtrl.value;
 
-          final orbFade =
-              Curves.easeOut.transform((p * 4.0).clamp(0.0, 1.0));
-          final orbScale = lerpDouble(0.5, 1.0, orbFade)!;
-          final ringT =
-              Curves.easeOutCubic.transform(((p - 0.08) * 2.2).clamp(0.0, 1.0));
-          final titleFade =
-              Curves.easeOut.transform(((p - 0.30) * 3.5).clamp(0.0, 1.0));
-          final subFade =
-              Curves.easeOut.transform(((p - 0.45) * 3.5).clamp(0.0, 1.0));
-          final exitFade = p > 0.82
-              ? 1.0 - ((p - 0.82) / 0.18).clamp(0.0, 1.0)
-              : 1.0;
-          final breathe = 0.5 + 0.5 * math.sin(l * math.pi * 2);
+          final lightScale = (0.25 + 0.75 * lightT) * (1.0 + 0.08 * breath);
+          final glowBlur = 12.0 + 20.0 * lightT + 8.0 * breath;
 
-          return Opacity(
-            opacity: exitFade,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                CustomPaint(
-                  painter: _SkyPainter(t: l, breathe: breathe),
-                  size: mq,
-                ),
-                Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Transform.scale(
-                        scale: orbScale,
-                        child: Opacity(
-                          opacity: orbFade,
-                          child: SizedBox(
-                            width: 120,
-                            height: 120,
-                            child: CustomPaint(
-                              painter: _OrbPainter(
-                                ring: ringT,
-                                breathe: breathe,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 40),
-                      Opacity(
-                        opacity: titleFade,
-                        child: Transform.translate(
-                          offset: Offset(0, 16 * (1 - titleFade)),
-                          child: Text(
-                            'Meditator',
-                            style: Theme.of(context).textTheme.displayMedium?.copyWith(
-                              color: Colors.white,
-                              letterSpacing: 3.0,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Opacity(
-                        opacity: subFade,
-                        child: Transform.translate(
-                          offset: Offset(0, 10 * (1 - subFade)),
-                          child: Text(
-                            'пространство для разума',
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Colors.white.withValues(alpha: 0.4),
-                              letterSpacing: 4.0,
-                              fontWeight: FontWeight.w400,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              // Cosmos layer (gradient + particles)
+              if (gradT > 0)
+                RepaintBoundary(
+                  child: CustomPaint(
+                    painter: _CosmosPainter(
+                      gradientAlpha: gradT,
+                      stagger: stagger,
+                      time: cosmos,
+                      particles: _particles,
+                      breath: breath,
+                    ),
                   ),
                 ),
-              ],
-            ),
+
+              // Central light
+              Center(
+                child: Opacity(
+                  opacity: lightT,
+                  child: Transform.scale(
+                    scale: lightScale,
+                    child: Container(
+                      width: 24,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: RadialGradient(
+                          colors: [
+                            Colors.white.withValues(alpha: 0.9),
+                            _violet,
+                            _violet.withValues(alpha: 0.0),
+                          ],
+                          stops: const [0.0, 0.4, 1.0],
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: _violet.withValues(alpha: 0.6 * lightT),
+                            blurRadius: glowBlur,
+                            spreadRadius: 2,
+                          ),
+                          BoxShadow(
+                            color: _violet.withValues(alpha: 0.2 * lightT),
+                            blurRadius: glowBlur * 2,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           );
         },
       ),
@@ -166,139 +191,110 @@ class _SplashScreenState extends State<SplashScreen>
   }
 }
 
-class _OrbPainter extends CustomPainter {
-  _OrbPainter({required this.ring, required this.breathe});
-  final double ring;
-  final double breathe;
+// ─── Particle data ───────────────────────────────────────────────────────────
 
-  @override
-  void paint(Canvas canvas, Size size) {
-    final cx = size.width / 2;
-    final cy = size.height / 2;
-    final c = Offset(cx, cy);
-    final r = size.shortestSide * 0.28;
+class _Particle {
+  final double x, y;
+  final double size;
+  final double baseAlpha;
+  final double driftAmpX, driftAmpY;
+  final double driftFreqX, driftFreqY;
+  final double phase;
+  final int layer;
+  final double staggerThreshold;
 
-    final outerGlowR = r * (2.0 + 0.25 * breathe);
-    canvas.drawCircle(
-      c,
-      outerGlowR,
-      Paint()
-        ..shader = RadialGradient(colors: [
-          C.primary.withValues(alpha: 0.15 + 0.05 * breathe),
-          C.accent.withValues(alpha: 0.04),
-          Colors.transparent,
-        ], stops: const [
-          0.0,
-          0.4,
-          1.0
-        ]).createShader(Rect.fromCircle(center: c, radius: outerGlowR)),
-    );
+  const _Particle({
+    required this.x, required this.y,
+    required this.size, required this.baseAlpha,
+    required this.driftAmpX, required this.driftAmpY,
+    required this.driftFreqX, required this.driftFreqY,
+    required this.phase, required this.layer,
+    required this.staggerThreshold,
+  });
 
-    final coreR = r * (1.0 + 0.06 * breathe);
-    canvas.drawCircle(
-      c,
-      coreR,
-      Paint()
-        ..shader = RadialGradient(
-          center: const Alignment(-0.25, -0.25),
-          focal: const Alignment(-0.1, -0.1),
-          focalRadius: 0.02,
-          colors: [
-            Colors.white.withValues(alpha: 0.35),
-            C.accent.withValues(alpha: 0.5),
-            C.primary.withValues(alpha: 0.35),
-            C.primary.withValues(alpha: 0.1),
-          ],
-          stops: const [0.0, 0.3, 0.7, 1.0],
-        ).createShader(Rect.fromCircle(center: c, radius: coreR)),
-    );
-
-    canvas.drawCircle(
-      c,
-      coreR,
-      Paint()
-        ..color = Colors.white.withValues(alpha: 0.06)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 0.8,
-    );
-
-    for (var i = 0; i < 3; i++) {
-      final rr = r * (1.4 + i * 0.4) * ring;
-      final a = (0.18 - i * 0.05) * ring;
-      if (a <= 0) continue;
-      canvas.drawCircle(
-        c,
-        rr,
-        Paint()
-          ..color = C.accent.withValues(alpha: a.clamp(0.0, 1.0))
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 0.7,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _OrbPainter o) =>
-      o.ring != ring || o.breathe != breathe;
-}
-
-class _SkyPainter extends CustomPainter {
-  _SkyPainter({required this.t, required this.breathe});
-  final double t;
-  final double breathe;
-
-  static final _stars = List.generate(80, (i) {
-    final rng = math.Random(i * 31 + 13);
-    return (
+  factory _Particle.random(Random rng, int index, int total) {
+    return _Particle(
       x: rng.nextDouble(),
       y: rng.nextDouble(),
-      r: 0.3 + rng.nextDouble() * 1.2,
-      phase: rng.nextDouble(),
+      size: 1.0 + rng.nextDouble() * 2.0,
+      baseAlpha: 0.2 + rng.nextDouble() * 0.4,
+      driftAmpX: 0.01 + rng.nextDouble() * 0.04,
+      driftAmpY: 0.01 + rng.nextDouble() * 0.03,
+      driftFreqX: 0.5 + rng.nextDouble() * 1.5,
+      driftFreqY: 0.5 + rng.nextDouble() * 1.5,
+      phase: rng.nextDouble() * 2 * pi,
+      layer: rng.nextInt(3),
+      staggerThreshold: index / total * 0.75,
     );
+  }
+
+  static const layerSpeeds = [0.5, 1.0, 1.5];
+}
+
+// ─── Cosmos painter ──────────────────────────────────────────────────────────
+
+class _CosmosPainter extends CustomPainter {
+  final double gradientAlpha;
+  final double stagger;
+  final double time;
+  final List<_Particle> particles;
+  final double breath;
+
+  _CosmosPainter({
+    required this.gradientAlpha,
+    required this.stagger,
+    required this.time,
+    required this.particles,
+    required this.breath,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
-    final cx = size.width / 2;
-    final cy = size.height * 0.38;
+    final rect = Offset.zero & size;
 
-    void glow(Offset c, double r, Color col, double a) {
-      final rr = r * (1.0 + 0.04 * breathe);
+    // Radial gradient: center #1E1B4B → outer #020617
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..shader = RadialGradient(
+          center: Alignment.center,
+          radius: 1.2,
+          colors: [
+            _cosmosCenter.withValues(alpha: gradientAlpha),
+            _cosmosEdge.withValues(alpha: gradientAlpha),
+          ],
+        ).createShader(rect),
+    );
+
+    // Particles
+    final t = time * 2 * pi;
+    final paint = Paint();
+
+    for (final p in particles) {
+      final particleFade = ((stagger - p.staggerThreshold) / 0.25).clamp(0.0, 1.0);
+      if (particleFade <= 0) continue;
+
+      final speedMul = _Particle.layerSpeeds[p.layer];
+      final px = (p.x + sin(t * p.driftFreqX * speedMul + p.phase) * p.driftAmpX) % 1.0;
+      final py = (p.y + cos(t * p.driftFreqY * speedMul + p.phase) * p.driftAmpY) % 1.0;
+
+      final twinkle = (sin(t * 1.5 * speedMul + p.phase) + 1.0) * 0.5;
+      final alpha = (p.baseAlpha * (0.4 + 0.6 * twinkle) * particleFade * gradientAlpha)
+          .clamp(0.0, 1.0);
+
+      paint.color = Colors.white.withValues(alpha: alpha);
       canvas.drawCircle(
-        c,
-        rr,
-        Paint()
-          ..shader = RadialGradient(colors: [
-            col.withValues(alpha: a),
-            col.withValues(alpha: a * 0.2),
-            Colors.transparent,
-          ]).createShader(Rect.fromCircle(center: c, radius: rr))
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 40),
-      );
-    }
-
-    glow(Offset(cx, cy), 200, C.primary, 0.08);
-    glow(Offset(cx + 90, cy + 120), 140, C.accent, 0.05);
-    glow(Offset(cx - 70, cy + 200), 100, const Color(0xFF6366F1), 0.04);
-
-    final sp = Paint();
-    for (final s in _stars) {
-      final tw = 0.15 +
-          0.85 *
-              (0.5 +
-                  0.5 *
-                      math.sin(
-                          t * math.pi * 2 * 2.5 + s.phase * math.pi * 2));
-      sp.color = Colors.white.withValues(alpha: tw);
-      canvas.drawCircle(
-        Offset(s.x * size.width, s.y * size.height),
-        s.r,
-        sp,
+        Offset(px * size.width, py * size.height),
+        p.size * (0.8 + 0.2 * breath),
+        paint,
       );
     }
   }
 
   @override
-  bool shouldRepaint(covariant _SkyPainter o) =>
-      o.t != t || o.breathe != breathe;
+  bool shouldRepaint(_CosmosPainter old) =>
+      old.gradientAlpha != gradientAlpha ||
+      old.stagger != stagger ||
+      old.time != time ||
+      old.breath != breath;
 }

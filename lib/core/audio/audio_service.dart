@@ -1,77 +1,95 @@
-import 'dart:io';
-import 'dart:typed_data';
+import 'dart:math';
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
-import 'package:path_provider/path_provider.dart';
 
 class AudioService {
-  AudioService._();
+  final AudioPlayer _player = AudioPlayer();
+  String? _currentTrack;
 
-  static final AudioService instance = AudioService._();
+  static const _sessionAudio = <String, List<String>>{
+    'anxiety_relief': [
+      'assets/audio/anxiety-01-med.mp3',
+      'assets/audio/anxiety-02-med.mp3',
+      'assets/audio/anxiety-03-med.mp3',
+    ],
+    'energy_reset': [
+      'assets/audio/focus-01-med.mp3',
+      'assets/audio/focus-02-med.mp3',
+      'assets/audio/focus-03-med.mp3',
+    ],
+    'overload_relief': [
+      'assets/audio/breathing-01-med.mp3',
+      'assets/audio/breathing-02-med.mp3',
+      'assets/audio/breathing-04-med.mp3',
+    ],
+    'grounding': [
+      'assets/audio/visualization-01-med.mp3',
+      'assets/audio/visualization-02-med.mp3',
+      'assets/audio/visualization-03-med.mp3',
+    ],
+    'sleep_reset': [
+      'assets/audio/sleep-01-med.mp3',
+      'assets/audio/sleep-02-med.mp3',
+      'assets/audio/sleep-03-med.mp3',
+    ],
+    'deepen': [
+      'assets/audio/bodyScan-01-med.mp3',
+      'assets/audio/bodyScan-02-med.mp3',
+      'assets/audio/bodyScan-03-med.mp3',
+    ],
+    'emergency': [
+      'assets/audio/emergency-01-med.mp3',
+      'assets/audio/emergency-02-med.mp3',
+      'assets/audio/emergency-03-med.mp3',
+    ],
+  };
 
-  final AudioPlayer _main = AudioPlayer();
-  final AudioPlayer _ambient = AudioPlayer();
-  File? _tempAudioFile;
+  static final _rng = Random();
 
-  Stream<PlayerState> get playerStateStream => _main.playerStateStream;
-
-  Stream<Duration> get positionStream => _main.positionStream;
-
-  Stream<Duration> get bufferedPositionStream => _main.bufferedPositionStream;
-
-  Stream<Duration?> get durationStream => _main.durationStream;
-
-  Duration? get totalDuration => _main.duration;
-  Duration get position => _main.position;
-
-  double get speed => _main.speed;
-
-  Future<void> playUrl(String url) async {
-    await _main.setUrl(url);
-    await _main.play();
+  Future<void> playSession(String sessionType) async {
+    final tracks = _sessionAudio[sessionType] ?? _sessionAudio['deepen']!;
+    final track = tracks[_rng.nextInt(tracks.length)];
+    _currentTrack = track;
+    await _player.setAsset(track);
+    await _player.setVolume(1.0);
+    await _player.play();
   }
 
-  Future<void> playFile(String path) async {
-    await _main.setFilePath(path);
-    await _main.play();
+  Future<void> playEmergency() async => playSession('emergency');
+
+  String? get currentTrack => _currentTrack;
+  bool get isPlaying => _player.playing;
+  Stream<Duration> get positionStream => _player.positionStream;
+  Stream<PlayerState> get playerStateStream => _player.playerStateStream;
+
+  Future<void> stop() async {
+    await _player.stop();
+    _currentTrack = null;
   }
 
-  Future<void> playBytes(Uint8List bytes) async {
-    final dir = await getTemporaryDirectory();
-    final file = File('${dir.path}/meditator_audio_${DateTime.now().millisecondsSinceEpoch}.mp3');
-    await file.writeAsBytes(bytes, flush: true);
-    _tempAudioFile?.delete().catchError((_) {});
-    _tempAudioFile = file;
-    await _main.setFilePath(file.path);
-    await _main.play();
+  Future<void> pause() async => _player.pause();
+  Future<void> resume() async => _player.play();
+
+  Future<void> setVolume(double v) async => _player.setVolume(v);
+
+  Future<void> fadeOut({
+    Duration duration = const Duration(milliseconds: 2000),
+  }) async {
+    const steps = 20;
+    final step = Duration(milliseconds: duration.inMilliseconds ~/ steps);
+
+    for (var i = steps; i > 0; i--) {
+      if (!_player.playing) break;
+      await _player.setVolume(i / steps);
+      await Future.delayed(step);
+    }
+    await _player.stop();
+    await _player.setVolume(1.0);
+    _currentTrack = null;
   }
 
-  Future<void> pause() => _main.pause();
-
-  Future<void> resume() => _main.play();
-
-  Future<void> stop() => _main.stop();
-
-  Future<void> seek(Duration position) => _main.seek(position);
-
-  Future<void> setVolume(double volume) => _main.setVolume(volume.clamp(0, 1));
-
-  Future<void> setSpeed(double speed) => _main.setSpeed(speed.clamp(0.5, 2.0));
-
-  Future<void> playAmbient(String url) async {
-    await _ambient.setUrl(url);
-    await _ambient.setLoopMode(LoopMode.one);
-    await _ambient.play();
-  }
-
-  Future<void> stopAmbient() => _ambient.stop();
-
-  Future<void> setAmbientVolume(double volume) =>
-      _ambient.setVolume(volume.clamp(0, 1));
-
-  Future<void> dispose() async {
-    await _main.dispose();
-    await _ambient.dispose();
-    _tempAudioFile?.delete().catchError((_) {});
-  }
+  void dispose() => _player.dispose();
 }
+
+final audioServiceProvider = Provider<AudioService>((_) => AudioService());

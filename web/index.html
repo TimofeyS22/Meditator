@@ -31,17 +31,7 @@ html{scroll-behavior:smooth;-webkit-font-smoothing:antialiased;-moz-osx-font-smo
 body{font-family:var(--sans);background:var(--bg);color:var(--text);overflow-x:hidden;line-height:1.65;font-size:15px;font-weight:400}
 ::selection{background:var(--primary-soft);color:var(--text)}
 
-canvas#stars{position:fixed;inset:0;z-index:0;pointer-events:none}
-.grain{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.02;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E")}
-
-.aurora{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
-.aurora b{position:absolute;border-radius:50%;filter:blur(160px);opacity:.08;will-change:transform}
-.aurora b:nth-child(1){width:600px;height:600px;background:var(--primary);top:-250px;left:-150px;animation:a1 30s ease-in-out infinite alternate}
-.aurora b:nth-child(2){width:400px;height:400px;background:var(--accent);top:50%;right:-180px;animation:a2 35s ease-in-out infinite alternate}
-.aurora b:nth-child(3){width:350px;height:350px;background:var(--gold);bottom:-200px;left:30%;animation:a3 28s ease-in-out infinite alternate;opacity:.05}
-@keyframes a1{0%{transform:translate(0,0) scale(1)}100%{transform:translate(60px,-40px) scale(1.08)}}
-@keyframes a2{0%{transform:translate(0,0) scale(1)}100%{transform:translate(-40px,30px) scale(1.1)}}
-@keyframes a3{0%{transform:translate(0,0) scale(1)}100%{transform:translate(30px,-40px) scale(1.15)}}
+.bg-glow{position:fixed;inset:0;z-index:0;pointer-events:none;background:radial-gradient(ellipse 60% 50% at 40% 30%,rgba(124,111,255,0.06),transparent 70%),radial-gradient(ellipse 50% 40% at 70% 70%,rgba(100,255,218,0.03),transparent 70%)}
 
 .wrap{position:relative;z-index:1;max-width:1040px;margin:0 auto;padding:0 24px}
 
@@ -62,7 +52,7 @@ nav .inner{max-width:1040px;margin:0 auto;display:flex;align-items:center;justif
 .nav-logout:hover{color:var(--rose)}
 
 /* ─── HERO ─── */
-.hero{min-height:100vh;min-height:100svh;display:flex;align-items:center;justify-content:center;text-align:center;padding:120px 24px 100px}
+.hero{min-height:80vh;min-height:80svh;display:flex;align-items:center;justify-content:center;text-align:center;padding:120px 24px 80px}
 .hero__inner{max-width:640px}
 .hero__pill{display:inline-flex;align-items:center;gap:8px;padding:6px 16px;border-radius:999px;background:var(--primary-soft);border:1px solid rgba(124,111,255,0.12);font-size:11px;font-weight:600;color:var(--primary);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:40px}
 h1{font-family:var(--serif);font-size:clamp(2.6rem,6.5vw,4.4rem);font-weight:300;line-height:1.06;letter-spacing:-0.03em;margin-bottom:28px;color:var(--text)}
@@ -208,9 +198,7 @@ footer .inner{display:flex;justify-content:space-between;align-items:center;flex
 </head>
 <body>
 
-<canvas id="stars"></canvas>
-<div class="grain"></div>
-<div class="aurora"><b></b><b></b><b></b></div>
+<div class="bg-glow"></div>
 
 <!-- ═══ NAV ═══ -->
 <nav id="nav">
@@ -387,11 +375,6 @@ let user=JSON.parse(localStorage.getItem('mt_user')||'null');
 let authMode='signin';
 let selectedPlan='yearly';
 
-(function(){
-const c=document.getElementById('stars'),g=c.getContext('2d');let w,h,S=[];
-function R(){w=c.width=innerWidth;h=c.height=innerHeight;S=[];const n=Math.min(Math.floor(w*h/6000),140);for(let i=0;i<n;i++)S.push({x:Math.random()*w,y:Math.random()*h,r:Math.random()*.8+.15,a:Math.random()*.5+.08,s:Math.random()*.0008+.0001,p:Math.random()*6.28})}
-function D(){g.clearRect(0,0,w,h);for(const s of S){s.p+=s.s*16;const a=s.a*(.5+.5*Math.sin(s.p));g.beginPath();g.arc(s.x,s.y,s.r,0,6.28);g.fillStyle=`rgba(240,238,246,${a})`;g.fill()}requestAnimationFrame(D)}
-addEventListener('resize',R);R();requestAnimationFrame(D)})();
 
 const nav=document.getElementById('nav');
 let ticking=false;
